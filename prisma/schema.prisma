@@ -1,0 +1,278 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// =============================================================================
+// ENUMS DEFINITION
+// =============================================================================
+
+enum Role {
+  SUPER_ADMIN
+  OKR_CHAMPION
+  MANAGER
+  EMPLOYEE
+  VIEWER
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+enum CycleType {
+  ANNUAL
+  QUARTERLY
+}
+
+enum ObjectiveLevel {
+  COMPANY
+  DEPARTMENT
+  INDIVIDUAL
+}
+
+enum ConfidenceScore {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AlignmentType {
+  VERTICAL
+  CROSS
+}
+
+enum UnitType {
+  PERCENTAGE
+  CURRENCY
+  NUMERIC
+  BOOLEAN
+}
+
+// =============================================================================
+// 1. DEPARTMENTS
+// =============================================================================
+
+model Department {
+  id          BigInt    @id @default(autoincrement())
+  name        String    @db.VarChar(150)
+  description String?   @db.Text
+  parentId    BigInt?   @map("parent_id")
+  managerId   BigInt?   @map("manager_id")
+  status      Status    @default(ACTIVE)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  // Relations
+  parent           Department?  @relation("DeptParentToDeptChild", fields: [parentId], references: [id], onDelete: SetNull)
+  children         Department[] @relation("DeptParentToDeptChild")
+  manager          User?        @relation("DeptManager", fields: [managerId], references: [id], onDelete: SetNull)
+  members          User[]       @relation("UserDepartment")
+  departmentObjectives Objective[]
+
+  @@index([status], map: "idx_dept_status")
+  @@index([parentId], map: "idx_dept_parent")
+  @@map("departments")
+}
+
+// =============================================================================
+// 2. USERS
+// =============================================================================
+
+model User {
+  id           BigInt    @id @default(autoincrement())
+  email        String    @unique @db.VarChar(150)
+  password     String    @db.VarChar(255)
+  fullName     String    @map("full_name") @db.VarChar(100)
+  avatarUrl    String?   @map("avatar_url") @db.VarChar(550)
+  jobTitle     String?   @map("job_title") @db.VarChar(100)
+  role         Role      @default(EMPLOYEE)
+  departmentId BigInt?   @map("department_id")
+  managerId    BigInt?   @map("manager_id")
+  status       Status    @default(ACTIVE)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // Relations
+  department         Department? @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  manager            User?       @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates       User[]      @relation("UserManager")
+  managedDepartments Department[] @relation("DeptManager")
+
+  createdCycles       Cycle[]     @relation("CycleCreator")
+  ownedObjectives     Objective[] @relation("ObjOwner")
+  approvedObjectives  Objective[] @relation("ObjApprover")
+  ownedKeyResults     KeyResult[] @relation("KROwner")
+  
+  createdCheckIns     CheckIn[]   @relation("CheckInCreator")
+  reviewedCheckIns    CheckIn[]   @relation("CheckInReviewer")
+
+  @@index([role], map: "idx_user_role")
+  @@index([departmentId], map: "idx_user_dept")
+  @@index([email], map: "idx_user_email")
+  @@map("users")
+}
+
+// =============================================================================
+// 3. CYCLES
+// =============================================================================
+
+model Cycle {
+  id        BigInt    @id @default(autoincrement())
+  title     String    @db.VarChar(100)
+  code      String    @unique @db.VarChar(50)
+  type      CycleType @default(QUARTERLY)
+  parentId  BigInt?   @map("parent_id")
+  startDate DateTime  @map("start_date") @db.Date
+  endDate   DateTime  @map("end_date") @db.Date
+  status    Status    @default(DRAFT)
+  createdBy BigInt    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  parent   Cycle?    @relation("CycleParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children Cycle[]   @relation("CycleParent")
+  creator  User      @relation("CycleCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  objectives Objective[]
+
+  @@index([status, startDate, endDate], map: "idx_cycle_status_dates")
+  @@map("cycles")
+}
+
+// =============================================================================
+// 4. OBJECTIVES
+// =============================================================================
+
+model Objective {
+  id                 BigInt         @id @default(autoincrement())
+  title              String         @db.VarChar(255)
+  description        String?        @db.Text
+  level              ObjectiveLevel
+  cycleId            BigInt         @map("cycle_id")
+  departmentId       BigInt?        @map("department_id")
+  ownerId            BigInt         @map("owner_id")
+  approverId         BigInt?        @map("approver_id")
+  status             Status         @default(DRAFT)
+  progressPercentage Decimal        @default(0.00) @map("progress_percentage") @db.Decimal(5, 2)
+  confidenceScore    ConfidenceScore @default(MEDIUM) @map("confidence_score")
+  weight             Decimal        @default(1.00) @db.Decimal(5, 2)
+  isAlignedCross     Boolean        @default(false) @map("is_aligned_cross")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  deletedAt          DateTime?      @map("deleted_at")
+
+  // Relations
+  cycle      Cycle       @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  owner      User        @relation("ObjOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  approver   User?       @relation("ObjApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  keyResults KeyResult[]
+
+  // Alignments (Many-to-Many self reference via join table)
+  alignmentsFrom ObjectiveAlignment[] @relation("AlignedFrom")
+  alignmentsTo   ObjectiveAlignment[] @relation("AlignedTo")
+
+  @@index([cycleId, departmentId], map: "idx_obj_cycle_dept")
+  @@index([ownerId], map: "idx_obj_owner")
+  @@index([status], map: "idx_obj_status")
+  @@map("objectives")
+}
+
+// =============================================================================
+// 4.1 OBJECTIVE ALIGNMENTS
+// =============================================================================
+
+model ObjectiveAlignment {
+  id               BigInt        @id @default(autoincrement())
+  alignedFromObjId BigInt        @map("aligned_from_obj_id")
+  alignedToObjId   BigInt        @map("aligned_to_obj_id")
+  alignmentType    AlignmentType @default(VERTICAL) @map("alignment_type")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  // Relations
+  alignedFrom Objective @relation("AlignedFrom", fields: [alignedFromObjId], references: [id], onDelete: Cascade)
+  alignedTo   Objective @relation("AlignedTo", fields: [alignedToObjId], references: [id], onDelete: Cascade)
+
+  @@unique([alignedFromObjId, alignedToObjId], map: "uq_alignment_pair")
+  @@map("objective_alignments")
+}
+
+// =============================================================================
+// 5. KEY RESULTS
+// =============================================================================
+
+model KeyResult {
+  id           BigInt    @id @default(autoincrement())
+  objectiveId  BigInt    @map("objective_id")
+  title        String    @db.VarChar(255)
+  ownerId      BigInt    @map("owner_id")
+  unitType     UnitType  @default(NUMERIC) @map("unit_type")
+  unitLabel    String?   @map("unit_label") @db.VarChar(50)
+  startValue   Decimal   @default(0.00) @map("start_value") @db.Decimal(15, 2)
+  targetValue  Decimal   @map("target_value") @db.Decimal(15, 2)
+  currentValue Decimal   @default(0.00) @map("current_value") @db.Decimal(15, 2)
+  weight       Decimal   @default(1.00) @db.Decimal(5, 2)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // Relations
+  objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  owner     User      @relation("KROwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
+  checkIns CheckIn[]
+
+  @@index([objectiveId], map: "idx_kr_objective")
+  @@index([ownerId], map: "idx_kr_owner")
+  @@map("key_results")
+}
+
+// =============================================================================
+// 6. CHECK-INS
+// =============================================================================
+
+model CheckIn {
+  id               BigInt          @id @default(autoincrement())
+  krId             BigInt          @map("kr_id")
+  createdBy        BigInt          @map("created_by")
+  oldValue         Decimal         @map("old_value") @db.Decimal(15, 2)
+  newValue         Decimal         @map("new_value") @db.Decimal(15, 2)
+  confidenceScore  ConfidenceScore @default(MEDIUM) @map("confidence_score")
+  note             String?         @db.Text
+  blocker          String?         @db.Text
+  status           Status          @default(APPROVED)
+  reviewerId       BigInt?         @map("reviewer_id")
+  reviewerFeedback String?         @map("reviewer_feedback") @db.Text
+  approvedDoneAt   DateTime?       @map("approved_done_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  keyResult KeyResult @relation(fields: [krId], references: [id], onDelete: Cascade)
+  creator   User      @relation("CheckInCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  reviewer  User?     @relation("CheckInReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([krId, createdAt(sort: Desc)], map: "idx_checkin_kr_created")
+  @@index([status], map: "idx_checkin_status")
+  @@map("check_ins")
+}
