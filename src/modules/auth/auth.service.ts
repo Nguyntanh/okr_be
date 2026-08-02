@@ -38,8 +38,6 @@ export class AuthService {
 
     const { password, ...result } = user;
 
-    // Prisma returns BigInt for DB IDs. JSON.stringify cannot serialize BigInt.
-    // Convert them before returning the payload to Nest/Express.
     return serializeBigInt(result);
   }
 }
