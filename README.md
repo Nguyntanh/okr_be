@@ -75,9 +75,13 @@ File chính:
 
 - Đăng nhập bằng email và password
 - Xác thực mật khẩu bằng bcrypt
-- Tạo JWT access token sau khi đăng nhập thành công
+- Tạo JWT access token và refresh token khi đăng nhập thành công
+- Lưu refresh token đã hash trong bảng `refresh_tokens` và kiểm tra trạng thái hết hạn / revoke
+- Gửi refresh token qua cookie HttpOnly cho bảo mật tốt hơn với XSS/CSRF
 - Bảo vệ các route cần xác thực bằng `AuthGuard`
 - Trả về thông tin user từ payload JWT ở endpoint profile
+- Hỗ trợ refresh token để cấp lại access token mới mà không cần đăng nhập lại
+- Hỗ trợ logout bằng cách revoke refresh token và xóa cookie phía client
 - Xử lý lỗi 401 khi token thiếu/không hợp lệ hoặc thông tin đăng nhập sai
 
 #### Cách hoạt động
@@ -86,10 +90,12 @@ File chính:
 2. `AuthController` nhận body `{ email, password }`
 3. `AuthService.signIn(email, password)` tìm user theo email và kiểm tra mật khẩu
 4. Nếu không tìm thấy user hoặc mật khẩu sai -> throw `UnauthorizedException`
-5. Nếu khớp -> loại bỏ password và tạo JWT payload
-6. API trả về `{ access_token: "..." }`
-7. Client gửi `Authorization: Bearer <token>` cho route bảo vệ như `GET /auth/profile`
+5. Nếu khớp -> tạo access token và refresh token, lưu refresh token đã hash vào DB
+6. Refresh token được gắn vào cookie `refreshToken` với `httpOnly: true` và thời hạn 7 ngày
+7. Client gửi `Authorization: Bearer <access_token>` cho route bảo vệ như `GET /auth/profile`
 8. `AuthGuard` giải mã token và gắn `req.user` để controller đọc thông tin người dùng
+9. Khi access token hết hạn, client gọi `POST /auth/refresh` để lấy token mới dựa trên cookie refresh token
+10. `POST /auth/logout` revoke token và xóa cookie trên client
 
 #### API Auth mới
 
@@ -107,8 +113,20 @@ Response mẫu:
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "1",
+    "email": "user@example.com",
+    "fullName": "Nguyen Van A",
+    "role": "EMPLOYEE"
+  }
 }
+```
+
+Cookie được set tự động:
+
+```http
+refreshToken=<jwt-refresh-token>; HttpOnly; Path=/auth; SameSite=Lax
 ```
 
 ```http
@@ -127,7 +145,31 @@ Response mẫu:
 }
 ```
 
-Tính năng xác thực JWT mới này giúp hệ thống backend có thể bảo vệ các route cần quyền truy cập và chuẩn bị cho các module sau như quản lý OKR, phân quyền và điều hành dự án.
+```http
+POST /auth/refresh
+```
+
+Response mẫu:
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+```http
+POST /auth/logout
+```
+
+Response mẫu:
+
+```json
+{
+  "message": "Đăng xuất thành công"
+}
+```
+
+Bản cập nhật này giúp hệ thống backend thực hiện cơ chế xác thực dạng JWT hiện đại hơn với refresh-token rotation, bảo mật cookie và route được bảo vệ an toàn hơn trước khi mở rộng cho các module quản lý OKR, phân quyền và điều hành dự án.
 
 ---
 
@@ -159,24 +201,40 @@ Dữ liệu người dùng được dùng trong quá trình xác thực đăng n
 
 ## 5. Tính năng mới đã cập nhật
 
-### 5.1 Xác thực JWT
+### 5.1 Xác thực JWT và Refresh Token
 
-Hệ thống auth đã được nâng cấp để hỗ trợ xác thực dựa trên JWT:
+Hệ thống auth đã được nâng cấp theo cơ chế JWT chuẩn:
 
-- `AuthService.signIn()` tạo token sau khi xác thực thành công
-- `AuthGuard` kiểm tra `Authorization: Bearer <token>`
-- Token được xác minh bằng `JwtService.verifyAsync()`
-- `req.user` được gắn vào request để controller truy cập dữ liệu người dùng
+- `AuthService.signIn()` tạo access token và refresh token sau khi xác thực thành công
+- `AuthGuard` kiểm tra `Authorization: Bearer <access_token>`
+- Token access được xác minh bằng `JwtService.verifyAsync()` và gắn `req.user`
+- Refresh token được lưu dưới dạng hash trong bảng `refresh_tokens`
+- Refresh token được kiểm tra theo userId, trạng thái `isRevoked`, thời hạn `expiresAt`
+- Hệ thống cho phép rotate refresh token khi gọi `/auth/refresh`
 
-Điều này cho phép các API sau này bảo vệ theo role và chỉ cho phép người dùng hợp lệ truy cập.
+Điều này cho phép API bảo vệ theo quyền truy cập và hỗ trợ trải nghiệm đăng nhập dài hạn mà vẫn bảo mật tốt hơn.
 
 ### 5.2 Profile route bảo vệ
 
 Endpoint sau đã được hỗ trợ:
 
-- `GET /auth/profile` — chỉ truy cập được khi có JWT hợp lệ
+- `GET /auth/profile` — chỉ truy cập được khi có access token hợp lệ
+- `POST /auth/refresh` — cấp lại access token mới từ refresh token trong cookie
+- `POST /auth/logout` — revoke refresh token và xóa cookie
 
-Đây là tính năng nền tảng để mở rộng cho các module quản lý OKR, quyền hạn và theo dõi tiến độ sau này.
+Đây là nền tảng cho các module quản lý OKR, quyền hạn và theo dõi tiến độ sau này.
+
+### 5.3 Bảo mật cookie và biến môi trường
+
+Dự án hiện đang dùng `.env` với các biến quan trọng như:
+
+- `DATABASE_URL`
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `CLIENT_URL`
+- `NODE_ENV`
+
+Refresh token được lưu trong cookie `HttpOnly`, có `path: /auth`, `sameSite: Lax`, và thời hạn 7 ngày. Cách này giúp tránh lộ refresh token ở client-side JavaScript và tăng cường bảo mật ứng dụng.
 
 ---
 
