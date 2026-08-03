@@ -127,7 +127,25 @@ model User {
   @@index([role], map: "idx_user_role")
   @@index([departmentId], map: "idx_user_dept")
   @@index([email], map: "idx_user_email")
+
+  refreshTokens RefreshToken[]
+
   @@map("users")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  hashedToken String   @map("hashed_token")
+  userId      BigInt   @map("user_id")
+  isRevoked   Boolean  @default(false) @map("is_revoked")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 // =============================================================================
