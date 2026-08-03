@@ -73,22 +73,61 @@ File chính:
 
 #### Chức năng hiện có
 
-- Login bằng email và password
-- Tìm người dùng theo email
-- So sánh mật khẩu bằng bcrypt
-- Xử lý lỗi 401 khi xác thực thất bại
-- Trả về thông tin user sau khi đăng nhập, loại bỏ password
+- Đăng nhập bằng email và password
+- Xác thực mật khẩu bằng bcrypt
+- Tạo JWT access token sau khi đăng nhập thành công
+- Bảo vệ các route cần xác thực bằng `AuthGuard`
+- Trả về thông tin user từ payload JWT ở endpoint profile
+- Xử lý lỗi 401 khi token thiếu/không hợp lệ hoặc thông tin đăng nhập sai
 
 #### Cách hoạt động
 
 1. Client gọi `POST /auth/login`
 2. `AuthController` nhận body `{ email, password }`
-3. `AuthService.signIn(email, password)` gọi `UsersService.findOne(email)`
-4. Nếu không tìm thấy user -> throw `UnauthorizedException`
-5. Nếu tìm thấy user -> dùng `bcrypt.compare(password, user.password)`
-6. Nếu khớp -> trả về user object đã bỏ password
+3. `AuthService.signIn(email, password)` tìm user theo email và kiểm tra mật khẩu
+4. Nếu không tìm thấy user hoặc mật khẩu sai -> throw `UnauthorizedException`
+5. Nếu khớp -> loại bỏ password và tạo JWT payload
+6. API trả về `{ access_token: "..." }`
+7. Client gửi `Authorization: Bearer <token>` cho route bảo vệ như `GET /auth/profile`
+8. `AuthGuard` giải mã token và gắn `req.user` để controller đọc thông tin người dùng
 
-Hiện tại chưa có JWT token được tạo, nên login chủ yếu trả về đối tượng user đã xác thực.
+#### API Auth mới
+
+```http
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "123456"
+}
+```
+
+Response mẫu:
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+```http
+GET /auth/profile
+Authorization: Bearer <access_token>
+```
+
+Response mẫu:
+
+```json
+{
+  "id": "1",
+  "email": "user@example.com",
+  "fullName": "Nguyen Van A",
+  "role": "EMPLOYEE"
+}
+```
+
+Tính năng xác thực JWT mới này giúp hệ thống backend có thể bảo vệ các route cần quyền truy cập và chuẩn bị cho các module sau như quản lý OKR, phân quyền và điều hành dự án.
 
 ---
 
@@ -118,7 +157,30 @@ Dữ liệu người dùng được dùng trong quá trình xác thực đăng n
 
 ---
 
-## 5. Mô hình dữ liệu chính
+## 5. Tính năng mới đã cập nhật
+
+### 5.1 Xác thực JWT
+
+Hệ thống auth đã được nâng cấp để hỗ trợ xác thực dựa trên JWT:
+
+- `AuthService.signIn()` tạo token sau khi xác thực thành công
+- `AuthGuard` kiểm tra `Authorization: Bearer <token>`
+- Token được xác minh bằng `JwtService.verifyAsync()`
+- `req.user` được gắn vào request để controller truy cập dữ liệu người dùng
+
+Điều này cho phép các API sau này bảo vệ theo role và chỉ cho phép người dùng hợp lệ truy cập.
+
+### 5.2 Profile route bảo vệ
+
+Endpoint sau đã được hỗ trợ:
+
+- `GET /auth/profile` — chỉ truy cập được khi có JWT hợp lệ
+
+Đây là tính năng nền tảng để mở rộng cho các module quản lý OKR, quyền hạn và theo dõi tiến độ sau này.
+
+---
+
+## 6. Mô hình dữ liệu chính
 
 ### 5.1 User
 
