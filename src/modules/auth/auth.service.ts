@@ -181,7 +181,7 @@ export class AuthService {
     return newTokens;
   }
 
-  async signout(rawRefreshToken: string) {
+  async signOut(rawRefreshToken: string) {
     if (!rawRefreshToken) return;
 
     try {
