@@ -117,8 +117,7 @@ Response mẫu:
   "user": {
     "id": "1",
     "email": "user@example.com",
-    "fullName": "Nguyen Van A",
-    "role": "EMPLOYEE"
+    "fullName": "Nguyen Van A"
   }
 }
 ```
@@ -250,19 +249,10 @@ Bảng `users` lưu thông tin người dùng:
 - `fullName`
 - `avatarUrl`
 - `jobTitle`
-- `role`
 - `departmentId`
 - `managerId`
 - `status`
 - `createdAt`, `updatedAt`
-
-Các role hiện có:
-
-- `SUPER_ADMIN`
-- `OKR_CHAMPION`
-- `MANAGER`
-- `EMPLOYEE`
-- `VIEWER`
 
 ### 5.2 Department
 

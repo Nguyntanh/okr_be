@@ -82,7 +82,6 @@ export class AuthService {
       id: string;
       email: string;
       fullName: string;
-      role: string;
     };
   }> {
     // Tìm người dùng trong cơ sở dữ liệu bằng email.
@@ -105,8 +104,8 @@ export class AuthService {
     // Dòng này không có tác dụng gì vì kết quả không được gán, có thể xóa đi.
     void asJwtPayload(result);
 
-    // Tạo một cặp access token và refresh token mới.
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    // Tạo một cặp access token và refresh token mới (không còn chứa role).
+    const tokens = await this.generateTokens(user.id, user.email);
     // Lưu refresh token đã được hash vào cơ sở dữ liệu.
     await this.saveRefreshToken(user.id, tokens.refreshToken);
 
@@ -118,7 +117,6 @@ export class AuthService {
         id: user.id.toString(),
         email: user.email,
         fullName: user.fullName,
-        role: user.role,
       },
     };
   }
@@ -127,11 +125,10 @@ export class AuthService {
    * Tạo ra một cặp access token và refresh token.
    * @param userId - ID của người dùng.
    * @param email - Email của người dùng.
-   * @param role - Vai trò của người dùng.
    * @returns Một đối tượng chứa accessToken và refreshToken.
    */
-  private async generateTokens(userId: bigint, email: string, role: string) {
-    const payload = { sub: userId.toString(), email, role };
+  private async generateTokens(userId: bigint, email: string) {
+    const payload = { sub: userId.toString(), email };
 
     // Tạo đồng thời cả hai token để tăng hiệu suất.
     const [accessToken, refreshToken] = await Promise.all([
@@ -231,7 +228,7 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User không tồn tại');
 
     // Tạo và lưu một cặp token hoàn toàn mới (token rotation).
-    const newTokens = await this.generateTokens(user.id, user.email, user.role);
+    const newTokens = await this.generateTokens(user.id, user.email);
     await this.saveRefreshToken(user.id, newTokens.refreshToken);
 
     return newTokens;
