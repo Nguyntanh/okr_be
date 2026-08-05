@@ -435,28 +435,18 @@ npx prisma db push
 npx ts-node prisma/seed.ts
 ```
 
----
+## 9. Tình trạng hiện tại và Hướng phát triển
 
-## 9. Tình trạng hiện tại của dự án
+Dự án đã có một nền tảng backend vững chắc với các tính năng:
 
-Dự án đang ở giai đoạn nền tảng backend / mô hình dữ liệu OKR với các phần chính đã có sẵn:
-
-- Module auth cơ bản
-- Module user cơ bản
-- Prisma schema với dữ liệu OKR đầy đủ
-- Seed admin mặc định
-- Kết nối database MySQL
-- Cấu trúc NestJS chuẩn cho các module tiếp theo
+- Hệ thống xác thực JWT với Refresh Token Rotation.
+- Hệ thống phân quyền động (RBAC) linh hoạt và mạnh mẽ.
+- Mô hình dữ liệu OKR chi tiết, được tối ưu hóa hiệu suất.
+- Cơ chế seed dữ liệu tự động để khởi tạo môi trường.
 
 Những phần cần phát triển tiếp trong tương lai gồm:
 
-- CRUD user, department, objective, key result, check-in
-- JWT và bảo mật endpoint
-- Role-based authorization
-- API báo cáo OKR
-- Phê duyệt mục tiêu, quản lý tiến độ và dashboard
-
----
+- Xây dựng các `Guard` (RolesGuard, PermissionsGuard) để bảo vệ các API dựa trên hệ thống RBAC.
 
 ## 10. Kết luận
 
