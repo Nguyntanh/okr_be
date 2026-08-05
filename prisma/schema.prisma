@@ -1,14 +1,15 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// =============================================================================
+// PRISMA CONFIGURATION
+// =============================================================================
 
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
-
 datasource db {
   provider = "mysql"
 }
@@ -80,6 +81,7 @@ model Department {
 
   @@index([status], map: "idx_dept_status")
   @@index([parentId], map: "idx_dept_parent")
+  @@index([managerId], map: "idx_dept_manager") // 💡 REFACTORED: Tối ưu query tìm phòng ban do Manager X quản lý
   @@map("departments")
 }
 
@@ -115,12 +117,13 @@ model User {
   createdCheckIns     CheckIn[]   @relation("CheckInCreator")
   reviewedCheckIns    CheckIn[]   @relation("CheckInReviewer")
 
-  @@index([departmentId], map: "idx_user_dept")
-  @@index([email], map: "idx_user_email")
-
   refreshTokens RefreshToken[]
-  // RBAC relation
   roles         UserRole[]
+
+  @@index([departmentId], map: "idx_user_dept")
+  @@index([managerId], map: "idx_user_manager") // 💡 REFACTORED: Tối ưu query lấy danh sách nhân viên cấp dưới
+  @@index([email], map: "idx_user_email")
+  @@index([status], map: "idx_user_status")   // 💡 REFACTORED: Tối ưu query lọc Active Users
 
   @@map("users")
 }
@@ -136,33 +139,39 @@ model RefreshToken {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  @@index([userId], map: "idx_token_user_id")
+  @@index([expiresAt, isRevoked], map: "idx_token_cleanup") // 💡 REFACTORED: Tối ưu Cronjob dọn dẹp Token hết hạn
   @@map("refresh_tokens")
 }
 
 // =============================================================================
-// RBAC - ROLES & PERMISSIONS
+// 3. DYNAMIC RBAC (5-TABLE ARCHITECTURE - REFACTORED)
 // =============================================================================
 
 model Role {
   id          BigInt    @id @default(autoincrement())
-  code        String    @unique @db.VarChar(50)
-  name        String    @db.VarChar(100)
+  code        String    @unique @db.VarChar(50)  // VD: 'SUPER_ADMIN', 'DEPARTMENT_HEAD'
+  name        String    @db.VarChar(100)        // VD: 'Quản trị viên hệ thống'
   description String?   @db.Text
+  isSystem    Boolean   @default(false) @map("is_system") // 💡 REFACTORED: Khóa bảo vệ Role hệ thống không bị xóa lỡ tay
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")      // 💡 REFACTORED: Soft delete giữ nguyên Audit Log
 
   // Relations
   users       UserRole[]
   permissions RolePermission[]
 
+  @@index([code], map: "idx_role_code")
   @@map("roles")
 }
 
 model Permission {
   id          BigInt   @id @default(autoincrement())
-  action      String   @db.VarChar(50) // e.g., 'create', 'read', 'update', 'delete'
-  subject     String   @db.VarChar(50) // e.g., 'User', 'Objective', 'all'
+  code        String   @unique @db.VarChar(100) // 💡 REFACTORED: Mã duy nhất dạng 'objective:create' cho Redis Guard
+  action      String   @db.VarChar(50)          // CASL support: 'create', 'read', 'update', 'delete'
+  subject     String   @db.VarChar(50)          // CASL support: 'User', 'Objective', 'Department'
+  module      String   @default("system") @db.VarChar(50) // 💡 REFACTORED: Gom nhóm Module hiển thị UI Dashboard
   description String?  @db.Text
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -170,6 +179,8 @@ model Permission {
   roles       RolePermission[]
 
   @@unique([action, subject], map: "uq_permission_action_subject")
+  @@index([code], map: "idx_permission_code")
+  @@index([module], map: "idx_permission_module")
   @@map("permissions")
 }
 
@@ -184,6 +195,7 @@ model UserRole {
   assignedAt DateTime @default(now()) @map("assigned_at")
 
   @@id([userId, roleId])
+  @@index([roleId], map: "idx_user_role_role_id") // 💡 REFACTORED: Tối ưu B-Tree Reverse Lookup O(log N)
   @@map("user_roles")
 }
 
@@ -198,11 +210,12 @@ model RolePermission {
   assignedAt DateTime @default(now()) @map("assigned_at")
 
   @@id([roleId, permissionId])
+  @@index([permissionId], map: "idx_role_permission_perm_id") // 💡 REFACTORED: Tối ưu B-Tree Reverse Lookup O(log N)
   @@map("role_permissions")
 }
 
 // =============================================================================
-// 3. CYCLES
+// 4. CYCLES
 // =============================================================================
 
 model Cycle {
@@ -226,11 +239,12 @@ model Cycle {
   objectives Objective[]
 
   @@index([status, startDate, endDate], map: "idx_cycle_status_dates")
+  @@index([createdBy], map: "idx_cycle_created_by") // 💡 REFACTORED
   @@map("cycles")
 }
 
 // =============================================================================
-// 4. OBJECTIVES
+// 5. OBJECTIVES
 // =============================================================================
 
 model Objective {
@@ -265,12 +279,13 @@ model Objective {
 
   @@index([cycleId, departmentId], map: "idx_obj_cycle_dept")
   @@index([ownerId], map: "idx_obj_owner")
+  @@index([approverId], map: "idx_obj_approver") // 💡 REFACTORED: Tối ưu query duyệt Objective
   @@index([status], map: "idx_obj_status")
   @@map("objectives")
 }
 
 // =============================================================================
-// 4.1 OBJECTIVE ALIGNMENTS
+// 5.1 OBJECTIVE ALIGNMENTS
 // =============================================================================
 
 model ObjectiveAlignment {
@@ -285,11 +300,12 @@ model ObjectiveAlignment {
   alignedTo   Objective @relation("AlignedTo", fields: [alignedToObjId], references: [id], onDelete: Cascade)
 
   @@unique([alignedFromObjId, alignedToObjId], map: "uq_alignment_pair")
+  @@index([alignedToObjId], map: "idx_alignment_to_obj") // 💡 REFACTORED: B-Tree Index cho truy vấn Alignment ngược
   @@map("objective_alignments")
 }
 
 // =============================================================================
-// 5. KEY RESULTS
+// 6. KEY RESULTS
 // =============================================================================
 
 model KeyResult {
@@ -319,7 +335,7 @@ model KeyResult {
 }
 
 // =============================================================================
-// 6. CHECK-INS
+// 7. CHECK-INS
 // =============================================================================
 
 model CheckIn {
@@ -344,6 +360,8 @@ model CheckIn {
   reviewer  User?     @relation("CheckInReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
 
   @@index([krId, createdAt(sort: Desc)], map: "idx_checkin_kr_created")
+  @@index([createdBy], map: "idx_checkin_creator")   // 💡 REFACTORED: Query lịch sử check-in của cá nhân
+  @@index([reviewerId], map: "idx_checkin_reviewer") // 💡 REFACTORED: Query danh sách check-in chờ review
   @@index([status], map: "idx_checkin_status")
   @@map("check_ins")
 }

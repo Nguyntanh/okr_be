@@ -1,6 +1,6 @@
 import * as bcrypt from 'bcrypt';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
-import { PrismaClient, Role } from '../src/generated/prisma/client';
+import { PrismaClient } from '../src/generated/prisma/client';
 
 /**
  * 1. Khai báo Interface Cấu hình Seed để tuân thủ Dependency Inversion (D trong SOLID)
@@ -9,7 +9,7 @@ interface AdminSeedConfig {
   email: string;
   plainPassword: string;
   fullName: string;
-  role: Role;
+  roleCode: string; // Changed from 'role: Role' to 'roleCode: string'
   saltRounds: number;
 }
 
@@ -20,7 +20,7 @@ const DEFAULT_ADMIN_CONFIG: AdminSeedConfig = {
   email: process.env.SEED_ADMIN_EMAIL || 'admin@example.com',
   plainPassword: process.env.SEED_ADMIN_PASSWORD || 'Admin@123456',
   fullName: 'System Administrator',
-  role: Role.SUPER_ADMIN,
+  roleCode: 'SUPER_ADMIN',
   saltRounds: 10,
 };
 
@@ -54,22 +54,51 @@ async function seedDefaultAdmin(
     config.saltRounds,
   );
 
-  // Sử dụng Upsert để đảm bảo Idempotent operation:
-  // - Nếu chưa có: Tạo mới
-  // - Nếu đã có: Không làm gì cả (update: {})
-  const admin = await prisma.user.upsert({
+  // Step 1: Upsert the Role to ensure it exists.
+  const adminRole = await prisma.role.upsert({
+    where: { code: config.roleCode },
+    update: {},
+    create: {
+      code: config.roleCode,
+      name: 'Super Administrator',
+      description: 'Has all permissions in the system.',
+    },
+  });
+  console.log(`✅ Role "${adminRole.name}" is ready.`);
+
+  // Step 2: Upsert the User.
+  const adminUser = await prisma.user.upsert({
     where: { email: config.email },
-    update: {}, // Bỏ qua không overwrite thông tin nếu admin đã tồn tại
+    update: {
+      // You might want to update the password on re-seed for security reasons
+      // password: hashedPassword,
+    },
     create: {
       email: config.email,
       password: hashedPassword,
       fullName: config.fullName,
-      role: config.role,
+      // The 'role' field is no longer on the User model
+    },
+  });
+  console.log(`✅ Admin user "${adminUser.email}" is ready.`);
+
+  // Step 3: Assign the Role to the User via the join table.
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: adminUser.id,
+        roleId: adminRole.id,
+      },
+    },
+    update: {}, // Nothing to update if the link already exists
+    create: {
+      userId: adminUser.id,
+      roleId: adminRole.id,
     },
   });
 
   console.log(
-    `✅ Default Admin Seeded Successfully: [ID: ${admin.id} | Email: ${admin.email}]`,
+    `🔗 Successfully assigned role "${adminRole.code}" to user "${adminUser.email}".`,
   );
 }
 

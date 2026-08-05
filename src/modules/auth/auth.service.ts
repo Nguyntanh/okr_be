@@ -104,8 +104,8 @@ export class AuthService {
     // Dòng này không có tác dụng gì vì kết quả không được gán, có thể xóa đi.
     void asJwtPayload(result);
 
-    // Tạo một cặp access token và refresh token mới (không còn chứa role).
-    const tokens = await this.generateTokens(user.id, user.email);
+    // Tạo một cặp access token và refresh token mới.
+    const tokens = await this.generateTokens(user.id, user.email); // role parameter removed
     // Lưu refresh token đã được hash vào cơ sở dữ liệu.
     await this.saveRefreshToken(user.id, tokens.refreshToken);
 
@@ -228,7 +228,7 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User không tồn tại');
 
     // Tạo và lưu một cặp token hoàn toàn mới (token rotation).
-    const newTokens = await this.generateTokens(user.id, user.email);
+    const newTokens = await this.generateTokens(user.id, user.email); // user.role removed
     await this.saveRefreshToken(user.id, newTokens.refreshToken);
 
     return newTokens;
