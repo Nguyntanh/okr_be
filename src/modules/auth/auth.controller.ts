@@ -26,9 +26,9 @@ export class AuthController {
   private setRefreshTokenCookie(res: ExpressResponse, refreshToken: string) {
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/auth',
+      secure: true, // HTTPS trên Vercel
+      sameSite: 'none', // Bắt buộc cho Cross-origin giữa okr-fe và okr-be trên Vercel
+      path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
   }
@@ -48,6 +48,8 @@ export class AuthController {
 
     return {
       access_token: result.accessToken,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
       user: result.user,
     };
   }
@@ -55,19 +57,23 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Làm mới Access Token thông qua Refresh Token trong cookie',
+    summary:
+      'Làm mới Access Token thông qua Refresh Token trong cookie hoặc body',
   })
   async refresh(
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: ExpressResponse,
+    @Body() body?: { refreshToken?: string },
   ) {
-    const refreshToken = req.cookies?.['refreshToken'];
+    const refreshToken = req.cookies?.['refreshToken'] || body?.refreshToken;
     const newTokens = await this.authService.refreshTokens(refreshToken);
 
     this.setRefreshTokenCookie(res, newTokens.refreshToken);
 
     return {
       access_token: newTokens.accessToken,
+      accessToken: newTokens.accessToken,
+      refreshToken: newTokens.refreshToken,
     };
   }
 
@@ -79,11 +85,16 @@ export class AuthController {
   async signOut(
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: ExpressResponse,
+    @Body() body?: { refreshToken?: string },
   ) {
-    const refreshToken = req.cookies?.['refreshToken'];
+    const refreshToken = req.cookies?.['refreshToken'] || body?.refreshToken;
     await this.authService.signOut(refreshToken);
 
-    res.clearCookie('refreshToken', { path: '/auth' });
+    res.clearCookie('refreshToken', {
+      path: '/',
+      secure: true,
+      sameSite: 'none',
+    });
 
     return { message: 'Đăng xuất thành công' };
   }

@@ -20,16 +20,13 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Cycles (Chu kỳ OKRs)')
-@ApiBearerAuth()
-@UseGuards(AuthGuard, PermissionsGuard)
 @Controller('cycles')
 export class CyclesController {
   constructor(private readonly cyclesService: CyclesService) {}
 
   @Get()
-  @RequirePermissions('cycle:read')
   @ApiOperation({
-    summary: 'Lấy danh sách tất cả các chu kỳ OKR',
+    summary: 'Lấy danh sách tất cả các chu kỳ OKR (Công khai)',
     description:
       'Sắp xếp theo ngày bắt đầu mới nhất, kèm số lượng OKRs thuộc chu kỳ.',
   })
@@ -38,7 +35,6 @@ export class CyclesController {
   }
 
   @Get('current')
-  @RequirePermissions('cycle:read')
   @ApiOperation({
     summary:
       'Lấy chu kỳ OKR đang hoạt động hiện tại (Active / Theo ngày hôm nay)',
@@ -48,7 +44,6 @@ export class CyclesController {
   }
 
   @Get(':id')
-  @RequirePermissions('cycle:read')
   @ApiOperation({
     summary: 'Lấy thông tin chi tiết một chu kỳ theo ID',
   })
@@ -57,6 +52,8 @@ export class CyclesController {
   }
 
   @Post()
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermissions('cycle:create')
   @ApiOperation({
     summary: 'Tạo mới một chu kỳ OKR (Quý hoặc Năm)',
@@ -66,6 +63,8 @@ export class CyclesController {
   }
 
   @Put(':id')
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermissions('cycle:update')
   @ApiOperation({
     summary: 'Cập nhật thông tin chu kỳ',
@@ -75,6 +74,8 @@ export class CyclesController {
   }
 
   @Patch(':id/status')
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermissions('cycle:update')
   @ApiOperation({
     summary:
@@ -90,6 +91,8 @@ export class CyclesController {
   }
 
   @Delete(':id')
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, PermissionsGuard)
   @RequirePermissions('cycle:delete')
   @ApiOperation({
     summary: 'Xóa chu kỳ OKR (Kiểm tra xem chu kỳ có đang chứa mục tiêu không)',
