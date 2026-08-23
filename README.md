@@ -177,24 +177,121 @@ Bản cập nhật này giúp hệ thống backend thực hiện cơ chế xác 
 File chính:
 
 - [src/modules/users/users.module.ts](src/modules/users/users.module.ts)
+- [src/modules/users/users.controller.ts](src/modules/users/users.controller.ts)
 - [src/modules/users/users.service.ts](src/modules/users/users.service.ts)
 
-#### Chức năng hiện có
+#### Chức năng:
 
-- Tìm user theo email
-- Cung cấp service cho auth và có thể mở rộng cho CRUD người dùng sau này
+- `GET /users`: Lấy danh sách người dùng kèm phòng ban, người quản lý và các vai trò.
+- `GET /users/:id`: Lấy thông tin chi tiết người dùng.
+- `POST /users`: Tạo mới tài khoản người dùng và gán vai trò ban đầu.
+- `PUT /users/:id`: Cập nhật thông tin người dùng.
+- `PUT /users/:id/roles`: Gán danh sách vai trò cho người dùng (Dynamic Role Assignment).
+- `GET /users/:id/permissions`: Lấy danh sách vai trò và quyền hạn chi tiết của người dùng.
 
-#### Cách hoạt động
+---
 
-`UsersService.findOne(email)` thực hiện truy vấn Prisma:
+### 4.3 Roles & Permissions Modules (Dynamic RBAC)
 
-```ts
-this.prisma.user.findUnique({
-  where: { email },
-});
-```
+File chính:
 
-Dữ liệu người dùng được dùng trong quá trình xác thực đăng nhập.
+- [src/modules/roles/roles.module.ts](src/modules/roles/roles.module.ts)
+- [src/modules/roles/roles.controller.ts](src/modules/roles/roles.controller.ts)
+- [src/modules/roles/roles.service.ts](src/modules/roles/roles.service.ts)
+- [src/modules/permissions/permissions.module.ts](src/modules/permissions/permissions.module.ts)
+- [src/modules/permissions/permissions.controller.ts](src/modules/permissions/permissions.controller.ts)
+- [src/modules/permissions/permissions.service.ts](src/modules/permissions/permissions.service.ts)
+- [src/common/guards/permissions.guard.ts](src/common/guards/permissions.guard.ts)
+- [src/common/decorators/permissions.decorator.ts](src/common/decorators/permissions.decorator.ts)
+- [src/common/interceptors/transform-bigint.interceptor.ts](src/common/interceptors/transform-bigint.interceptor.ts)
+
+#### Chức năng Bảng phân quyền động:
+
+- `GET /permissions`: Lấy danh sách quyền gom nhóm theo từng Module (để vẽ Bảng ma trận phân quyền).
+- `GET /permissions/matrix`: Lấy toàn bộ ma trận Roles x Permissions.
+- `GET /roles`: Lấy danh sách vai trò kèm số lượng user và permission.
+- `GET /roles/:id`: Chi tiết vai trò và danh sách quyền.
+- `POST /roles`: Tạo vai trò tùy chỉnh mới.
+- `PUT /roles/:id`: Cập nhật thông tin vai trò.
+- `DELETE /roles/:id`: Xóa vai trò tùy chỉnh (bảo vệ chống xóa `isSystem: true`).
+- `GET /roles/:id/permissions`: Lấy danh sách quyền hiện tại của vai trò.
+- `PUT /roles/:id/permissions`: Cập nhật toàn bộ phân quyền cho vai trò từ Bảng phân quyền.
+- `@RequirePermissions('module:action')` & `PermissionsGuard`: Tự động kiểm tra quyền thời gian thực từ Database, bypass cho `SUPER_ADMIN`.
+
+---
+
+### 4.4 Departments Module (Cơ cấu Phòng ban)
+
+File chính:
+- [src/modules/departments/departments.module.ts](src/modules/departments/departments.module.ts)
+- [src/modules/departments/departments.controller.ts](src/modules/departments/departments.controller.ts)
+- [src/modules/departments/departments.service.ts](src/modules/departments/departments.service.ts)
+
+#### Chức năng:
+- `GET /departments`: Lấy danh sách phẳng tất cả phòng ban kèm Manager và số lượng thành viên.
+- `GET /departments/tree`: Lấy cấu trúc cây phân cấp phòng ban cha-con (Organization Tree).
+- `GET /departments/:id`: Xem chi tiết phòng ban, thành viên và OKRs phòng ban.
+- `POST /departments`: Tạo phòng ban mới (chọn cấp cha, gán Manager).
+- `PUT /departments/:id`: Cập nhật phòng ban, đổi Manager hoặc chuyển cấp cha.
+- `DELETE /departments/:id`: Xóa mềm phòng ban (kiểm tra ràng buộc phòng ban con).
+
+---
+
+### 4.5 Cycles Module (Chu kỳ OKRs)
+
+File chính:
+- [src/modules/cycles/cycles.module.ts](src/modules/cycles/cycles.module.ts)
+- [src/modules/cycles/cycles.controller.ts](src/modules/cycles/cycles.controller.ts)
+- [src/modules/cycles/cycles.service.ts](src/modules/cycles/cycles.service.ts)
+
+#### Chức năng:
+- `GET /cycles`: Lấy danh sách chu kỳ OKR (Quý/Năm), sắp xếp theo ngày mới nhất.
+- `GET /cycles/current`: Lấy chu kỳ đang hoạt động (Active / Theo ngày hôm nay).
+- `GET /cycles/:id`: Xem chi tiết chu kỳ và thống kê số lượng Mục tiêu.
+- `POST /cycles`: Tạo chu kỳ mới (Quý hoặc Năm).
+- `PUT /cycles/:id`: Sửa thông tin chu kỳ.
+- `PATCH /cycles/:id/status`: Khóa hoặc đổi trạng thái chu kỳ (`DRAFT`, `ACTIVE`, `CLOSED` - đóng băng dữ liệu OKR).
+- `DELETE /cycles/:id`: Xóa chu kỳ (kiểm tra nếu chưa có Objective).
+
+---
+
+### 4.6 Objectives & Key Results Modules (Mục tiêu & Chỉ số)
+
+File chính:
+- [src/modules/objectives/objectives.module.ts](src/modules/objectives/objectives.module.ts)
+- [src/modules/objectives/objectives.controller.ts](src/modules/objectives/objectives.controller.ts)
+- [src/modules/objectives/objectives.service.ts](src/modules/objectives/objectives.service.ts)
+- [src/modules/objectives/key-results.controller.ts](src/modules/objectives/key-results.controller.ts)
+- [src/modules/objectives/key-results.service.ts](src/modules/objectives/key-results.service.ts)
+
+#### Chức năng:
+- `GET /objectives`: Lọc danh sách Mục tiêu theo chu kỳ, phòng ban, người sở hữu, cấp độ, trạng thái duyệt, hoặc OKR của tôi (`mine=true`).
+- `GET /objectives/:id`: Chi tiết Mục tiêu kèm Key Results, Gióng hàng và Check-in.
+- `POST /objectives`: Tạo Mục tiêu (gắn chu kỳ, phòng ban, độ tự tin, approver, đính kèm KR ban đầu).
+- `PUT /objectives/:id`: Cập nhật Mục tiêu.
+- `PATCH /objectives/:id/status`: Duyệt mục tiêu (`DRAFT` -> `PENDING` -> `APPROVED` / `REJECTED`).
+- `DELETE /objectives/:id`: Xóa Mục tiêu.
+- `POST /objectives/:id/alignments`: Thiết lập liên kết gióng hàng dọc (Vertical) hoặc chéo (Cross).
+- `DELETE /objectives/:id/alignments/:targetObjId`: Hủy liên kết gióng hàng.
+- `POST /objectives/:id/key-results`: Thêm Key Result và tự động tính lại % tiến độ Mục tiêu.
+- `PUT /key-results/:id`: Sửa Key Result (chỉ tiêu, đơn vị, trọng số) và tự động tính lại tiến độ.
+- `DELETE /key-results/:id`: Xóa Key Result và tự động tính lại tiến độ.
+
+---
+
+### 4.7 Check-ins Module (Cập nhật Tiến độ & Phê duyệt)
+
+File chính:
+- [src/modules/check-ins/check-ins.module.ts](src/modules/check-ins/check-ins.module.ts)
+- [src/modules/check-ins/check-ins.controller.ts](src/modules/check-ins/check-ins.controller.ts)
+- [src/modules/check-ins/check-ins.service.ts](src/modules/check-ins/check-ins.service.ts)
+
+#### Chức năng:
+- `POST /key-results/:krId/check-ins`: Gửi bản check-in tiến độ (giá trị mới, độ tự tin, ghi chú, rào cản blocker).
+- `GET /key-results/:krId/check-ins`: Xem lịch sử check-in của Key Result (Audit Log).
+- `GET /check-ins/pending-reviews`: Màn hình danh sách check-in chờ Quản lý duyệt (`PENDING`).
+- `PATCH /check-ins/:id/review`: Duyệt (`APPROVED`) hoặc từ chối (`REJECTED`) kèm lời nhắn phản hồi. Khi duyệt thành công, giá trị KR được cập nhật và kích hoạt tính lại tiến độ tổng của Objective.
+
 
 ---
 

@@ -14,23 +14,15 @@ import type {
   Request as ExpressRequest,
   Response as ExpressResponse,
 } from 'express';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 
-/**
- * Controller chịu trách nhiệm xử lý các yêu cầu liên quan đến xác thực
- * như đăng nhập, đăng xuất, làm mới token và lấy thông tin người dùng.
- */
+@ApiTags('Auth (Xác thực)')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  /**
-   * Thiết lập refresh token vào cookie của response.
-   * Cookie được cấu hình là httpOnly để tăng cường bảo mật, chống lại các cuộc tấn công XSS.
-   * @param res - Đối tượng Express Response.
-   * @param refreshToken - Chuỗi refresh token.
-   */
   private setRefreshTokenCookie(res: ExpressResponse, refreshToken: string) {
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
@@ -41,14 +33,11 @@ export class AuthController {
     });
   }
 
-  /**
-   * Xử lý yêu cầu đăng nhập của người dùng.
-   * @param body - Chứa email và password từ client.
-   * @param res - Đối tượng Express Response để thiết lập cookie.
-   * @returns Trả về access token và thông tin cơ bản của người dùng.
-   */
   @HttpCode(HttpStatus.OK)
   @Post('login')
+  @ApiOperation({
+    summary: 'Đăng nhập bằng Email và Password',
+  })
   async signIn(
     @Body() body: { email: string; password: string },
     @Res({ passthrough: true }) res: ExpressResponse,
@@ -63,19 +52,16 @@ export class AuthController {
     };
   }
 
-  /**
-   * Làm mới access token bằng cách sử dụng refresh token từ cookie.
-   * @param req - Đối tượng Express Request để đọc cookie.
-   * @param res - Đối tượng Express Response để thiết lập cookie refresh token mới (nếu có rotation).
-   * @returns Trả về access token mới.
-   */
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Làm mới Access Token thông qua Refresh Token trong cookie',
+  })
   async refresh(
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: ExpressResponse,
   ) {
-    const refreshToken = req.cookies['refreshToken'];
+    const refreshToken = req.cookies?.['refreshToken'];
     const newTokens = await this.authService.refreshTokens(refreshToken);
 
     this.setRefreshTokenCookie(res, newTokens.refreshToken);
@@ -85,19 +71,16 @@ export class AuthController {
     };
   }
 
-  /**
-   * Xử lý yêu cầu đăng xuất.
-   * @param req - Đối tượng Express Request để đọc refresh token từ cookie.
-   * @param res - Đối tượng Express Response để xóa cookie.
-   * @returns Một thông báo xác nhận đăng xuất thành công.
-   */
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Đăng xuất tài khoản và thu hồi Refresh Token',
+  })
   async signOut(
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: ExpressResponse,
   ) {
-    const refreshToken = req.cookies['refreshToken'];
+    const refreshToken = req.cookies?.['refreshToken'];
     await this.authService.signOut(refreshToken);
 
     res.clearCookie('refreshToken', { path: '/auth' });
@@ -105,14 +88,15 @@ export class AuthController {
     return { message: 'Đăng xuất thành công' };
   }
 
-  /**
-   * Endpoint được bảo vệ, chỉ có thể truy cập khi có access token hợp lệ.
-   * @param req - Request object, đã được AuthGuard gắn thông tin người dùng vào `req.user`.
-   * @returns Thông tin người dùng được giải mã từ JWT payload.
-   */
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
   @Get('profile')
-  getProfile(@Request() req) {
-    return req.user;
+  @ApiOperation({
+    summary: 'Lấy thông tin tài khoản đang đăng nhập kèm Roles và Permissions',
+    description:
+      'Trả về thông tin chi tiết user cùng danh sách quyền hạn (permissions) và vai trò (roles) để Frontend phân quyền hiển thị giao diện.',
+  })
+  async getProfile(@Request() req: any) {
+    return this.authService.getProfile(req.user.sub);
   }
 }
