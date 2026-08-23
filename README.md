@@ -1,558 +1,254 @@
-# OKR Backend
+# OKR Enterprise Backend API
 
-Backend API của hệ thống Quản lý OKR (Objectives and Key Results) được xây dựng bằng NestJS, Prisma và MySQL. Dự án hiện đang cung cấp nền tảng cơ bản cho việc quản lý người dùng, phân quyền, chu kỳ OKR, mục tiêu, kết quả then chốt và ghi nhận tiến độ.
+Hệ thống Backend API Quản lý Mục tiêu và Kết quả Then chốt (**Objectives and Key Results - OKRs**) cho doanh nghiệp, được xây dựng với **NestJS 10**, **Prisma ORM**, **MySQL / MariaDB**, kiến trúc phân quyền động **Dynamic RBAC (5-Table Architecture)** và tài liệu tương tác **Swagger UI**.
+
+---
 
 ## 1. Tổng quan hệ thống
 
-Hệ thống tập trung vào mô hình OKR doanh nghiệp, trong đó:
+Hệ thống cung cấp trọn vẹn 20/20 tính năng quản lý OKRs doanh nghiệp theo chuẩn thực tiễn:
 
-- Người dùng thuộc các vai trò khác nhau: `SUPER_ADMIN`, `OKR_CHAMPION`, `MANAGER`, `EMPLOYEE`, `VIEWER`
-- Mỗi người dùng có email, password, tên đầy đủ, vai trò, phòng ban và quản lý trực tiếp
-- Phòng ban được mô hình hóa theo cấu trúc cha-con
-- Mỗi chu kỳ OKR có thời gian bắt đầu/kết thúc và trạng thái
-- Mỗi mục tiêu có chủ sở hữu, phê duyệt, mức độ, độ tự tin, trọng số, tiến độ
-- Mỗi Key Result có tiêu chí đo lường cụ thể và theo dõi tiến độ
-- Hệ thống hỗ trợ check-in để cập nhật tiến độ, rào cản và đánh giá lại
-
-Hiện tại, project là backend API với mô hình dữ liệu đã hoàn chỉnh và một số module xác thực ban đầu đã được triển khai.
-
----
-
-## 2. Công nghệ sử dụng
-
-- Node.js / TypeScript
-- NestJS 10
-- Prisma ORM
-- MySQL
-- bcrypt
-- @nestjs/config
-
-Các file cấu hình và nền tảng chính:
-
-- [package.json](package.json)
-- [tsconfig.json](tsconfig.json)
-- [prisma/schema.prisma](prisma/schema.prisma)
-- [src/app.module.ts](src/app.module.ts)
-- [src/prisma/prisma.service.ts](src/prisma/prisma.service.ts)
+- **Xác thực & Bảo mật**: Đăng nhập Email/Password, Access Token (JWT), Refresh Token Rotation lưu trong Cookie `HttpOnly`.
+- **Bảng phân quyền động (Dynamic RBAC & Matrix)**: Quản lý Roles & Permissions theo thời gian thực từ Database, tự động bypass đối với `SUPER_ADMIN`, chặn truy cập bằng `PermissionsGuard`.
+- **Cơ cấu tổ chức**: Quản lý phòng ban theo mô hình cây cha - con (Organization Tree), phân bổ Trưởng phòng (Manager) và thành viên.
+- **Chu kỳ OKR (Cycles)**: Khởi tạo chu kỳ Năm / Quý, tự động xác định chu kỳ hiện tại, hỗ trợ **Khóa chu kỳ (`CLOSED`)** để đóng băng dữ liệu OKR và Check-in.
+- **Mục tiêu (Objectives)**: Phân cấp Công ty (`COMPANY`), Phòng ban (`DEPARTMENT`), Cá nhân (`INDIVIDUAL`); quy trình phê duyệt (`DRAFT` $\rightarrow$ `PENDING` $\rightarrow$ `APPROVED` / `REJECTED`).
+- **Kết quả then chốt (Key Results)**: Đo lường chỉ số đa dạng (`PERCENTAGE`, `CURRENCY`, `NUMERIC`, `BOOLEAN`), thiết lập giá trị bắt đầu, mục tiêu và trọng số (`weight`).
+- **Tự động tính toán tiến độ (Weighted Progress)**: Tự động cập nhật % tiến độ tổng của Objective ngay khi Key Result thay đổi giá trị hoặc khi Check-in được duyệt.
+- **Gióng hàng OKR (Alignments)**: Thiết lập liên kết gióng hàng chiến lược theo chiều dọc (`VERTICAL`) hoặc liên phòng ban (`CROSS`).
+- **Check-in & Đánh giá (Check-ins & Reviews)**: Cập nhật tiến độ định kỳ, ghi nhận độ tự tin (`ConfidenceScore`), rào cản (`Blockers`), lịch sử Audit Log và màn hình duyệt Check-in dành cho Quản lý.
 
 ---
 
-## 3. Kiến trúc ứng dụng
+## 2. Bảng đối soát 20 Tính năng Nghiệp vụ
 
-### 3.1 App bootstrap
-
-[app.module.ts](src/app.module.ts) đăng ký:
-
-- `ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' })`
-- `AuthModule`
-
-Điều này cho phép toàn bộ ứng dụng đọc biến môi trường trong suốt quá trình chạy.
-
-### 3.2 Kết nối database
-
-[prisma/schema.prisma](prisma/schema.prisma) định nghĩa toàn bộ mô hình dữ liệu. [src/prisma/prisma.service.ts](src/prisma/prisma.service.ts) khởi tạo PrismaClient dựa trên `DATABASE_URL`, sử dụng `PrismaMariaDb` để kết nối MySQL.
-
-Luồng kết nối:
-
-1. Đọc biến môi trường `DATABASE_URL`
-2. Parse host, port, username, password, database name
-3. Khởi tạo `PrismaMariaDb`
-4. Gắn adapter vào `PrismaClient`
-
----
-
-## 4. Các module hiện có
-
-### 4.1 Auth Module
-
-File chính:
-
-- [src/modules/auth/auth.module.ts](src/modules/auth/auth.module.ts)
-- [src/modules/auth/auth.controller.ts](src/modules/auth/auth.controller.ts)
-- [src/modules/auth/auth.service.ts](src/modules/auth/auth.service.ts)
-
-#### Chức năng hiện có
-
-- Đăng nhập bằng email và password
-- Xác thực mật khẩu bằng bcrypt
-- Tạo JWT access token và refresh token khi đăng nhập thành công
-- Lưu refresh token đã hash trong bảng `refresh_tokens` và kiểm tra trạng thái hết hạn / revoke
-- Gửi refresh token qua cookie HttpOnly cho bảo mật tốt hơn với XSS/CSRF
-- Bảo vệ các route cần xác thực bằng `AuthGuard`
-- Trả về thông tin user từ payload JWT ở endpoint profile
-- Hỗ trợ refresh token để cấp lại access token mới mà không cần đăng nhập lại
-- Hỗ trợ logout bằng cách revoke refresh token và xóa cookie phía client
-- Xử lý lỗi 401 khi token thiếu/không hợp lệ hoặc thông tin đăng nhập sai
-
-#### Cách hoạt động
-
-1. Client gọi `POST /auth/login`
-2. `AuthController` nhận body `{ email, password }`
-3. `AuthService.signIn(email, password)` tìm user theo email và kiểm tra mật khẩu
-4. Nếu không tìm thấy user hoặc mật khẩu sai -> throw `UnauthorizedException`
-5. Nếu khớp -> tạo access token và refresh token, lưu refresh token đã hash vào DB
-6. Refresh token được gắn vào cookie `refreshToken` với `httpOnly: true` và thời hạn 7 ngày
-7. Client gửi `Authorization: Bearer <access_token>` cho route bảo vệ như `GET /auth/profile`
-8. `AuthGuard` giải mã token và gắn `req.user` để controller đọc thông tin người dùng
-9. Khi access token hết hạn, client gọi `POST /auth/refresh` để lấy token mới dựa trên cookie refresh token
-10. `POST /auth/logout` revoke token và xóa cookie trên client
-
-#### API Auth mới
-
-```http
-POST /auth/login
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "123456"
-}
-```
-
-Response mẫu:
-
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": "1",
-    "email": "user@example.com",
-    "fullName": "Nguyen Van A"
-  }
-}
-```
-
-Cookie được set tự động:
-
-```http
-refreshToken=<jwt-refresh-token>; HttpOnly; Path=/auth; SameSite=Lax
-```
-
-```http
-GET /auth/profile
-Authorization: Bearer <access_token>
-```
-
-Response mẫu:
-
-```json
-{
-  "id": "1",
-  "email": "user@example.com",
-  "fullName": "Nguyen Van A",
-  "role": "EMPLOYEE"
-}
-```
-
-```http
-POST /auth/refresh
-```
-
-Response mẫu:
-
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-```http
-POST /auth/logout
-```
-
-Response mẫu:
-
-```json
-{
-  "message": "Đăng xuất thành công"
-}
-```
-
-Bản cập nhật này giúp hệ thống backend thực hiện cơ chế xác thực dạng JWT hiện đại hơn với refresh-token rotation, bảo mật cookie và route được bảo vệ an toàn hơn trước khi mở rộng cho các module quản lý OKR, phân quyền và điều hành dự án.
+| STT | Tính năng | User Story | Module / Endpoint chính | Trạng thái |
+| :---: | :--- | :--- | :--- | :---: |
+| **1** | **Đăng nhập Email/Password** | Đăng nhập bằng Email và Password lấy Token làm việc. | `POST /auth/login` (JWT + HttpOnly Cookie) | ✅ Hoàn thành |
+| **2** | **Đăng xuất an toàn** | Đăng xuất, vô hiệu hóa Token và bảo vệ dữ liệu. | `POST /auth/logout` (Revoke Refresh Token) | ✅ Hoàn thành |
+| **3** | **Khởi tạo User & gán Role** | Tạo tài khoản nhân sự và gán vai trò chặt chẽ. | `POST /users`, `PUT /users/:id/roles`, `RolesModule` | ✅ Hoàn thành |
+| **4** | **Xem & Cập nhật Profile** | Cập nhật Avatar, Job Title nhận diện trong sơ đồ. | `GET /auth/profile`, `PUT /users/:id` | ✅ Hoàn thành |
+| **5** | **Quản lý cấu trúc Phòng ban** | Tạo, sửa, xóa phòng ban cha/con, gán Trưởng phòng. | `GET /departments/tree`, `POST/PUT/DELETE /departments` | ✅ Hoàn thành |
+| **6** | **Tạo chu kỳ OKR mới** | Khởi tạo chu kỳ theo Quý (QUARTERLY) hoặc Năm (ANNUAL). | `POST /cycles` (`title`, `code`, `startDate`, `endDate`) | ✅ Hoàn thành |
+| **7** | **Khóa chu kỳ OKR (`CLOSED`)** | Khóa chu kỳ khi hết hạn để đóng băng dữ liệu OKR. | `PATCH /cycles/:id/status` (`status: CLOSED`) | ✅ Hoàn thành |
+| **8** | **Xem danh sách & Chuyển Chu kỳ**| Xem danh sách chu kỳ và chuyển đổi theo dõi OKR. | `GET /cycles`, `GET /cycles/current` | ✅ Hoàn thành |
+| **9** | **Khởi tạo & Thiết lập Mục tiêu** | Tạo OKR gắn với Chu kỳ, Phòng ban, Cấp độ. | `POST /objectives` (Gắn cycle, dept, owner, approver) | ✅ Hoàn thành |
+| **10** | **Quản lý Trạng thái duyệt OKR** | Quản lý duyệt OKR (`DRAFT` $\rightarrow$ `PENDING` $\rightarrow$ `APPROVED`). | `PATCH /objectives/:id/status` | ✅ Hoàn thành |
+| **11** | **Tự động tính Weighted Progress**| Tự động tính % tiến độ tổng hợp theo trọng số của KRs. | `ObjectivesService.recalculateProgress()` | ✅ Hoàn thành |
+| **12** | **Khởi tạo & Cấu hình Key Result** | Tạo KR, đơn vị tính, giá trị bắt đầu/mục tiêu, trọng số. | `POST /objectives/:id/key-results`, `PUT /key-results/:id` | ✅ Hoàn thành |
+| **13** | **Thiết lập liên kết Gióng hàng** | Gióng hàng OKR cấp trên (Vertical) hoặc chéo (Cross). | `POST /objectives/:id/alignments` (`VERTICAL`/`CROSS`) | ✅ Hoàn thành |
+| **14** | **Thực hiện Check-in tiến độ** | Check-in tiến độ KR, điểm tự tin và khó khăn (blockers).| `POST /key-results/:krId/check-ins` | ✅ Hoàn thành |
+| **15** | **Lịch sử Check-in (Audit Log)**| Xem toàn bộ lịch sử biến động tiến độ theo thời gian. | `GET /key-results/:krId/check-ins` | ✅ Hoàn thành |
+| **16** | **Danh sách Check-in chờ duyệt** | Màn hình danh sách Check-in chờ Quản lý duyệt. | `GET /check-ins/pending-reviews` | ✅ Hoàn thành |
+| **17** | **Phê duyệt / Từ chối Check-in** | Để lại feedback và duyệt/từ chối check-in cập nhật KR. | `PATCH /check-ins/:id/review` (`APPROVED`/`REJECTED`) | ✅ Hoàn thành |
+| **18** | **Xem OKR cá nhân & phòng ban** | Lọc xem OKR cá nhân và phòng ban trong chu kỳ. | `GET /objectives?level=&departmentId=&mine=true` | ✅ Hoàn thành |
+| **19** | **Tiến độ trực quan (Progress Bar)**| Dữ liệu `progressPercentage` & `confidenceScore` trực quan.| Tích hợp sẵn trong mọi endpoint trả về Objective | ✅ Hoàn thành |
+| **20** | **Lọc OKR theo trạng thái duyệt** | Lọc OKR trên Dashboard theo trạng thái duyệt. | `GET /objectives?status=APPROVED,PENDING` | ✅ Hoàn thành |
 
 ---
 
-### 4.2 Users Module
+## 3. Công nghệ sử dụng
 
-File chính:
-
-- [src/modules/users/users.module.ts](src/modules/users/users.module.ts)
-- [src/modules/users/users.controller.ts](src/modules/users/users.controller.ts)
-- [src/modules/users/users.service.ts](src/modules/users/users.service.ts)
-
-#### Chức năng:
-
-- `GET /users`: Lấy danh sách người dùng kèm phòng ban, người quản lý và các vai trò.
-- `GET /users/:id`: Lấy thông tin chi tiết người dùng.
-- `POST /users`: Tạo mới tài khoản người dùng và gán vai trò ban đầu.
-- `PUT /users/:id`: Cập nhật thông tin người dùng.
-- `PUT /users/:id/roles`: Gán danh sách vai trò cho người dùng (Dynamic Role Assignment).
-- `GET /users/:id/permissions`: Lấy danh sách vai trò và quyền hạn chi tiết của người dùng.
+- **Ngôn ngữ**: TypeScript / Node.js
+- **Framework**: NestJS 10
+- **Database & ORM**: MySQL / MariaDB + Prisma ORM (Client v7 với Driver Adapter `@prisma/adapter-mariadb`)
+- **Xác thực & Mã hóa**: JWT (`@nestjs/jwt`), `bcrypt`, `cookie-parser`
+- **Tài liệu API**: Swagger UI (`@nestjs/swagger`, `swagger-ui-dist`)
+- **Kiểm thử**: Jest, Supertest (100% Passed)
 
 ---
 
-### 4.3 Roles & Permissions Modules (Dynamic RBAC)
+## 4. Kiến trúc & Các Module API
 
-File chính:
+```mermaid
+flowchart TD
+    subgraph Client [Frontend / API Consumer]
+        App[Web Application / Admin Dashboard]
+    end
 
-- [src/modules/roles/roles.module.ts](src/modules/roles/roles.module.ts)
-- [src/modules/roles/roles.controller.ts](src/modules/roles/roles.controller.ts)
-- [src/modules/roles/roles.service.ts](src/modules/roles/roles.service.ts)
-- [src/modules/permissions/permissions.module.ts](src/modules/permissions/permissions.module.ts)
-- [src/modules/permissions/permissions.controller.ts](src/modules/permissions/permissions.controller.ts)
-- [src/modules/permissions/permissions.service.ts](src/modules/permissions/permissions.service.ts)
-- [src/common/guards/permissions.guard.ts](src/common/guards/permissions.guard.ts)
-- [src/common/decorators/permissions.decorator.ts](src/common/decorators/permissions.decorator.ts)
-- [src/common/interceptors/transform-bigint.interceptor.ts](src/common/interceptors/transform-bigint.interceptor.ts)
+    subgraph Guards [Bảo mật & Phân quyền]
+        AuthGuard[AuthGuard - JWT Verification]
+        PermGuard[PermissionsGuard - Realtime RBAC Check]
+        BigIntInterceptor[TransformBigIntInterceptor]
+    end
 
-#### Chức năng Bảng phân quyền động:
+    subgraph Modules [Các Module Nghiệp vụ NestJS]
+        AuthMod[AuthModule]
+        UsersMod[UsersModule]
+        RolesMod[RolesModule & PermissionsModule]
+        DeptMod[DepartmentsModule]
+        CyclesMod[CyclesModule]
+        ObjMod[ObjectivesModule & KeyResultsModule]
+        CheckInMod[CheckInsModule]
+    end
 
-- `GET /permissions`: Lấy danh sách quyền gom nhóm theo từng Module (để vẽ Bảng ma trận phân quyền).
-- `GET /permissions/matrix`: Lấy toàn bộ ma trận Roles x Permissions.
+    subgraph DB [Database Layer - Prisma]
+        MySQL[(MySQL Database)]
+    end
+
+    App --> AuthGuard --> PermGuard --> BigIntInterceptor
+    BigIntInterceptor --> Modules
+    Modules --> MySQL
+```
+
+### 4.1 Auth Module (`/auth`)
+- `POST /auth/login`: Đăng nhập với email và password, cấp Access Token và Refresh Token trong cookie HttpOnly.
+- `POST /auth/refresh`: Làm mới Access Token dựa trên cookie refresh token (Token Rotation).
+- `POST /auth/logout`: Đăng xuất tài khoản, thu hồi (revoke) token và xóa cookie.
+- `GET /auth/profile`: Lấy thông tin tài khoản đang đăng nhập kèm toàn bộ vai trò (`roles`) và quyền hạn (`permissions`) để Frontend phân quyền hiển thị UI.
+
+### 4.2 Users Module (`/users`)
+- `GET /users`: Danh sách người dùng kèm phòng ban, quản lý và vai trò.
+- `GET /users/:id`: Chi tiết người dùng.
+- `POST /users`: Tạo mới tài khoản và gán vai trò ban đầu.
+- `PUT /users/:id`: Cập nhật thông tin tài khoản.
+- `PUT /users/:id/roles`: Gán vai trò cho người dùng (Dynamic Role Assignment).
+- `GET /users/:id/permissions`: Tra cứu quyền hạn chi tiết của một tài khoản.
+
+### 4.3 Roles & Permissions Module (`/roles`, `/permissions`)
+- `GET /permissions`: Lấy danh sách 34 permissions gom nhóm theo 9 module (`users`, `roles`, `departments`, `cycles`, `objectives`, `key_results`, `alignments`, `checkins`, `reports`) phục vụ render Bảng ma trận phân quyền.
+- `GET /permissions/matrix`: Lấy toàn bộ ma trận (Roles x Permissions).
 - `GET /roles`: Lấy danh sách vai trò kèm số lượng user và permission.
 - `GET /roles/:id`: Chi tiết vai trò và danh sách quyền.
 - `POST /roles`: Tạo vai trò tùy chỉnh mới.
-- `PUT /roles/:id`: Cập nhật thông tin vai trò.
-- `DELETE /roles/:id`: Xóa vai trò tùy chỉnh (bảo vệ chống xóa `isSystem: true`).
-- `GET /roles/:id/permissions`: Lấy danh sách quyền hiện tại của vai trò.
+- `PUT /roles/:id`: Cập nhật tên/mô tả vai trò.
+- `DELETE /roles/:id`: Xóa vai trò tùy chỉnh (khóa bảo vệ không cho xóa vai trò hệ thống `isSystem: true`).
+- `GET /roles/:id/permissions`: Lấy danh sách quyền của vai trò.
 - `PUT /roles/:id/permissions`: Cập nhật toàn bộ phân quyền cho vai trò từ Bảng phân quyền.
-- `@RequirePermissions('module:action')` & `PermissionsGuard`: Tự động kiểm tra quyền thời gian thực từ Database, bypass cho `SUPER_ADMIN`.
 
----
-
-### 4.4 Departments Module (Cơ cấu Phòng ban)
-
-File chính:
-- [src/modules/departments/departments.module.ts](src/modules/departments/departments.module.ts)
-- [src/modules/departments/departments.controller.ts](src/modules/departments/departments.controller.ts)
-- [src/modules/departments/departments.service.ts](src/modules/departments/departments.service.ts)
-
-#### Chức năng:
+### 4.4 Departments Module (`/departments`)
 - `GET /departments`: Lấy danh sách phẳng tất cả phòng ban kèm Manager và số lượng thành viên.
-- `GET /departments/tree`: Lấy cấu trúc cây phân cấp phòng ban cha-con (Organization Tree).
+- `GET /departments/tree`: Lấy cấu trúc cây phân cấp phòng ban cha - con (Organization Tree).
 - `GET /departments/:id`: Xem chi tiết phòng ban, thành viên và OKRs phòng ban.
 - `POST /departments`: Tạo phòng ban mới (chọn cấp cha, gán Manager).
 - `PUT /departments/:id`: Cập nhật phòng ban, đổi Manager hoặc chuyển cấp cha.
 - `DELETE /departments/:id`: Xóa mềm phòng ban (kiểm tra ràng buộc phòng ban con).
 
----
-
-### 4.5 Cycles Module (Chu kỳ OKRs)
-
-File chính:
-- [src/modules/cycles/cycles.module.ts](src/modules/cycles/cycles.module.ts)
-- [src/modules/cycles/cycles.controller.ts](src/modules/cycles/cycles.controller.ts)
-- [src/modules/cycles/cycles.service.ts](src/modules/cycles/cycles.service.ts)
-
-#### Chức năng:
+### 4.5 Cycles Module (`/cycles`)
 - `GET /cycles`: Lấy danh sách chu kỳ OKR (Quý/Năm), sắp xếp theo ngày mới nhất.
-- `GET /cycles/current`: Lấy chu kỳ đang hoạt động (Active / Theo ngày hôm nay).
+- `GET /cycles/current`: Lấy chu kỳ đang hoạt động (Active / Khớp ngày hôm nay).
 - `GET /cycles/:id`: Xem chi tiết chu kỳ và thống kê số lượng Mục tiêu.
 - `POST /cycles`: Tạo chu kỳ mới (Quý hoặc Năm).
 - `PUT /cycles/:id`: Sửa thông tin chu kỳ.
 - `PATCH /cycles/:id/status`: Khóa hoặc đổi trạng thái chu kỳ (`DRAFT`, `ACTIVE`, `CLOSED` - đóng băng dữ liệu OKR).
 - `DELETE /cycles/:id`: Xóa chu kỳ (kiểm tra nếu chưa có Objective).
 
----
-
-### 4.6 Objectives & Key Results Modules (Mục tiêu & Chỉ số)
-
-File chính:
-- [src/modules/objectives/objectives.module.ts](src/modules/objectives/objectives.module.ts)
-- [src/modules/objectives/objectives.controller.ts](src/modules/objectives/objectives.controller.ts)
-- [src/modules/objectives/objectives.service.ts](src/modules/objectives/objectives.service.ts)
-- [src/modules/objectives/key-results.controller.ts](src/modules/objectives/key-results.controller.ts)
-- [src/modules/objectives/key-results.service.ts](src/modules/objectives/key-results.service.ts)
-
-#### Chức năng:
-- `GET /objectives`: Lọc danh sách Mục tiêu theo chu kỳ, phòng ban, người sở hữu, cấp độ, trạng thái duyệt, hoặc OKR của tôi (`mine=true`).
+### 4.6 Objectives & Key Results Module (`/objectives`, `/key-results`)
+- `GET /objectives`: Lọc danh sách Mục tiêu theo chu kỳ (`cycleId`), phòng ban (`departmentId`), người sở hữu (`ownerId`), cấp độ (`level`), trạng thái duyệt (`status`), hoặc OKR của tôi (`mine=true`).
 - `GET /objectives/:id`: Chi tiết Mục tiêu kèm Key Results, Gióng hàng và Check-in.
 - `POST /objectives`: Tạo Mục tiêu (gắn chu kỳ, phòng ban, độ tự tin, approver, đính kèm KR ban đầu).
 - `PUT /objectives/:id`: Cập nhật Mục tiêu.
-- `PATCH /objectives/:id/status`: Duyệt mục tiêu (`DRAFT` -> `PENDING` -> `APPROVED` / `REJECTED`).
+- `PATCH /objectives/:id/status`: Duyệt mục tiêu (`DRAFT` $\rightarrow$ `PENDING` $\rightarrow$ `APPROVED` / `REJECTED`).
 - `DELETE /objectives/:id`: Xóa Mục tiêu.
-- `POST /objectives/:id/alignments`: Thiết lập liên kết gióng hàng dọc (Vertical) hoặc chéo (Cross).
+- `POST /objectives/:id/alignments`: Thiết lập liên kết gióng hàng dọc (`VERTICAL`) hoặc chéo (`CROSS`).
 - `DELETE /objectives/:id/alignments/:targetObjId`: Hủy liên kết gióng hàng.
+- `GET /key-results/:id`: Xem chi tiết Key Result kèm lịch sử check-in.
 - `POST /objectives/:id/key-results`: Thêm Key Result và tự động tính lại % tiến độ Mục tiêu.
 - `PUT /key-results/:id`: Sửa Key Result (chỉ tiêu, đơn vị, trọng số) và tự động tính lại tiến độ.
 - `DELETE /key-results/:id`: Xóa Key Result và tự động tính lại tiến độ.
 
----
-
-### 4.7 Check-ins Module (Cập nhật Tiến độ & Phê duyệt)
-
-File chính:
-- [src/modules/check-ins/check-ins.module.ts](src/modules/check-ins/check-ins.module.ts)
-- [src/modules/check-ins/check-ins.controller.ts](src/modules/check-ins/check-ins.controller.ts)
-- [src/modules/check-ins/check-ins.service.ts](src/modules/check-ins/check-ins.service.ts)
-
-#### Chức năng:
-- `POST /key-results/:krId/check-ins`: Gửi bản check-in tiến độ (giá trị mới, độ tự tin, ghi chú, rào cản blocker).
+### 4.7 Check-ins Module (`/check-ins`, `/key-results/:krId/check-ins`)
+- `POST /key-results/:krId/check-ins`: Gửi bản check-in tiến độ (giá trị mới `newValue`, độ tự tin `confidenceScore`, ghi chú `note`, rào cản `blocker`).
 - `GET /key-results/:krId/check-ins`: Xem lịch sử check-in của Key Result (Audit Log).
 - `GET /check-ins/pending-reviews`: Màn hình danh sách check-in chờ Quản lý duyệt (`PENDING`).
-- `PATCH /check-ins/:id/review`: Duyệt (`APPROVED`) hoặc từ chối (`REJECTED`) kèm lời nhắn phản hồi. Khi duyệt thành công, giá trị KR được cập nhật và kích hoạt tính lại tiến độ tổng của Objective.
-
-
----
-
-## 5. Tính năng mới đã cập nhật
-
-### 5.1 Xác thực JWT và Refresh Token
-
-Hệ thống auth đã được nâng cấp theo cơ chế JWT chuẩn:
-
-- `AuthService.signIn()` tạo access token và refresh token sau khi xác thực thành công
-- `AuthGuard` kiểm tra `Authorization: Bearer <access_token>`
-- Token access được xác minh bằng `JwtService.verifyAsync()` và gắn `req.user`
-- Refresh token được lưu dưới dạng hash trong bảng `refresh_tokens`
-- Refresh token được kiểm tra theo userId, trạng thái `isRevoked`, thời hạn `expiresAt`
-- Hệ thống cho phép rotate refresh token khi gọi `/auth/refresh`
-
-Điều này cho phép API bảo vệ theo quyền truy cập và hỗ trợ trải nghiệm đăng nhập dài hạn mà vẫn bảo mật tốt hơn.
-
-### 5.2 Profile route bảo vệ
-
-Endpoint sau đã được hỗ trợ:
-
-- `GET /auth/profile` — chỉ truy cập được khi có access token hợp lệ
-- `POST /auth/refresh` — cấp lại access token mới từ refresh token trong cookie
-- `POST /auth/logout` — revoke refresh token và xóa cookie
-
-Đây là nền tảng cho các module quản lý OKR, quyền hạn và theo dõi tiến độ sau này.
-
-### 5.3 Bảo mật cookie và biến môi trường
-
-Dự án hiện đang dùng `.env` với các biến quan trọng như:
-
-- `DATABASE_URL`
-- `JWT_ACCESS_SECRET`
-- `JWT_REFRESH_SECRET`
-- `CLIENT_URL`
-- `NODE_ENV`
-
-Refresh token được lưu trong cookie `HttpOnly`, có `path: /auth`, `sameSite: Lax`, và thời hạn 7 ngày. Cách này giúp tránh lộ refresh token ở client-side JavaScript và tăng cường bảo mật ứng dụng.
+- `PATCH /check-ins/:id/review`: Quản lý duyệt (`APPROVED`) hoặc từ chối (`REJECTED`) kèm lời nhắn phản hồi (`reviewerFeedback`). Khi duyệt thành công, giá trị KR được cập nhật và kích hoạt tính lại tiến độ tổng của Objective.
 
 ---
 
-## 6. Mô hình dữ liệu chính
+## 5. Thuật toán Tính toán Tiến độ có Trọng số (Weighted Progress)
 
-### 5.1 User
+Tiến độ của một Key Result và Objective được tự động tính toán theo công thức:
 
-Bảng `users` lưu thông tin người dùng:
+$$\text{Progress}_{\text{KR}} = \min\left(100, \max\left(0, \frac{\text{Current} - \text{Start}}{\text{Target} - \text{Start}} \times 100\right)\right)$$
 
-- `id`: BigInt
-- `email`: unique
-- `password`
-- `fullName`
-- `avatarUrl`
-- `jobTitle`
-- `departmentId`
-- `managerId`
-- `status`
-- `createdAt`, `updatedAt`
+$$\text{Progress}_{\text{Objective}} = \frac{\sum_{i=1}^{n} (\text{Progress}_{\text{KR}_i} \times \text{Weight}_i)}{\sum_{i=1}^{n} \text{Weight}_i}$$
 
-### 5.2 Department
-
-Bảng `departments` lưu thông tin phòng ban:
-
-- `name`
-- `description`
-- `parentId`
-- `managerId`
-- `status`
-
-Mỗi phòng ban có thể có phòng ban cha, người quản lý và nhiều nhân sự thuộc về.
-
-### 5.3 Cycle
-
-Bảng `cycles` lưu chu kỳ OKR:
-
-- `title`
-- `code`
-- `type` = `ANNUAL` hoặc `QUARTERLY`
-- `startDate`
-- `endDate`
-- `status`
-- `createdBy`
-
-Chu kỳ là đơn vị thời gian để gắn các mục tiêu OKR.
-
-### 5.4 Objective
-
-Bảng `objectives` lưu mục tiêu:
-
-- `title`
-- `description`
-- `level` = `COMPANY`, `DEPARTMENT`, `INDIVIDUAL`
-- `cycleId`
-- `departmentId`
-- `ownerId`
-- `approverId`
-- `status`
-- `progressPercentage`
-- `confidenceScore`
-- `weight`
-- `isAlignedCross`
-
-Mục tiêu mô tả kết quả cốt lõi mà tổ chức, phòng ban hoặc cá nhân cần hướng tới.
-
-### 5.5 Key Result
-
-Bảng `key_results` lưu các chỉ số mục tiêu:
-
-- `title`
-- `objectiveId`
-- `ownerId`
-- `unitType`
-- `unitLabel`
-- `startValue`
-- `targetValue`
-- `currentValue`
-- `weight`
-
-Key Result giúp đo lường tiến độ của một objective bằng các chỉ số cụ thể.
-
-### 5.6 CheckIn
-
-Bảng `check_ins` lưu nhật ký cập nhật tiến độ:
-
-- `krId`
-- `createdBy`
-- `oldValue`
-- `newValue`
-- `confidenceScore`
-- `note`
-- `blocker`
-- `reviewerId`
-- `reviewerFeedback`
-- `status`
-
-Check-in có vai trò ghi nhận tiến độ mới nhất và cập nhật phản hồi từ reviewer.
+*Mỗi khi có thay đổi từ Check-in, sửa Key Result hoặc thay đổi trọng số, hệ thống sẽ tự động cập nhật lại `progressPercentage` của Objective cha.*
 
 ---
 
-## 6. Luồng hoạt động của hệ thống OKR
+## 6. Mô hình Dữ liệu Chính (Prisma Schema)
 
-### 6.1 Tạo chu kỳ OKR
+Hệ thống thiết kế theo chuẩn B-Tree Indexes tối ưu hóa truy vấn O(log N):
 
-- Admin hoặc champion tạo một cycle mới
-- Gán thời gian bắt đầu/kết thúc
-- Chu kỳ sẽ được gắn với các objective tương ứng
-
-### 6.2 Thiết lập objective
-
-- Người sở hữu tạo mục tiêu mới
-- Chọn mức độ: công ty, phòng ban hoặc cá nhân
-- Đặt trạng thái, trọng số, mức độ tự tin
-- Gán approver nếu cần
-
-### 6.3 Thiết lập Key Result
-
-- Với mỗi objective, người dùng có thể khai báo các KR đo lường
-- Mỗi KR có giá trị bắt đầu, mục tiêu và giá trị hiện tại
-- Từ đó, tiến độ có thể tính toán được
-
-### 6.4 Cập nhật tiến độ
-
-- Người sở hữu thực hiện check-in
-- Cập nhật `oldValue` và `newValue`
-- Viết note hoặc blocker
-- Reviewer có thể phản hồi và đánh giá trạng thái
-
-### 6.5 Theo dõi trạng thái
-
-- Status của objective/check-in sẽ theo dõi các trạng thái như `DRAFT`, `APPROVED`, `REJECTED`, `CLOSED`
-- Quản lý có thể kiểm tra tiến độ và đánh giá phù hợp
+- `users`: Thông tin người dùng, phòng ban, quản lý trực tiếp, trạng thái.
+- `refresh_tokens`: Lưu trữ Refresh Token đã hash với cơ chế Token Rotation.
+- `roles`: Bảng vai trò hệ thống (`isSystem`) và vai trò tùy chỉnh.
+- `permissions`: Bảng quyền chuẩn CASL (`action`, `subject`, `module`, `code`).
+- `user_roles`: Bảng trung gian gán nhiều Role cho User.
+- `role_permissions`: Bảng trung gian gán nhiều Permission cho Role.
+- `departments`: Cơ cấu tổ chức phân cấp cha - con và Manager.
+- `cycles`: Chu kỳ OKRs Quý/Năm và trạng thái khóa `CLOSED`.
+- `objectives`: Mục tiêu cấp Company, Department, Individual.
+- `objective_alignments`: Bảng liên kết gióng hàng dọc và ngang giữa các OKRs.
+- `key_results`: Chỉ số đo lường tiến độ của Objective.
+- `check_ins`: Nhật ký lịch sử cập nhật tiến độ, blocker và feedback phê duyệt.
 
 ---
 
-## 7. Seed admin mặc định
+## 7. Cài đặt & Hướng dẫn Chạy Dự án
 
-File: [prisma/seed.ts](prisma/seed.ts)
-
-Hệ thống có logic seed tài khoản admin mặc định, gồm:
-
-- email: `admin@example.com`
-- mật khẩu mặc định: `Admin@123456`
-
-Quy trình seed:
-
-1. Đọc `DATABASE_URL`
-2. Tạo Prisma client
-3. Hash password bằng bcrypt
-4. Dùng `upsert` để đảm bảo user admin luôn tồn tại
-5. Nếu chưa có thì tạo mới; nếu đã có thì bỏ qua cập nhật
-
-Điều này giúp môi trường mới luôn có sẵn tài khoản admin để test hệ thống.
-
----
-
-## 8. Cách chạy dự án
-
-### Yêu cầu
-
+### Yêu cầu môi trường
 - Node.js 18+
-- MySQL đang chạy
-- Biến môi trường `DATABASE_URL` được cấu hình
+- MySQL hoặc MariaDB đang chạy
 
-Ví dụ:
+### Cấu hình biến môi trường (`.env`)
+Tạo file `.env` tại thư mục gốc với các thông số:
 
-```bash
-DATABASE_URL=mysql://username:password@localhost:3306/okr_db
+```env
+DATABASE_URL="mysql://root:password@localhost:3306/okr_db"
+JWT_ACCESS_SECRET="your_jwt_access_secret_key_here"
+JWT_REFRESH_SECRET="your_jwt_refresh_secret_key_here"
+CLIENT_URL="http://localhost:5173"
+PORT=3000
+NODE_ENV="development"
+SEED_ADMIN_EMAIL="admin@example.com"
+SEED_ADMIN_PASSWORD="Admin@123456"
 ```
 
-### Cài đặt
+### Các bước cài đặt và khởi chạy
 
-```bash
-npm install
-```
+1. **Cài đặt thư viện**:
+   ```bash
+   npm install
+   ```
 
-### Chạy app
+2. **Đồng bộ Database Schema**:
+   ```bash
+   npx prisma db push
+   ```
 
-```bash
-npm run start
-```
+3. **Khởi tạo dữ liệu mẫu ban đầu (Seed Permissions, Roles & Admin User)**:
+   ```bash
+   npx ts-node prisma/seed.ts
+   ```
 
-### Chạy ở chế độ watch
+4. **Khởi chạy ứng dụng**:
+   ```bash
+   # Chế độ phát triển (Watch mode)
+   npm run start:dev
 
-```bash
-npm run start:dev
-```
+   # Chế độ Production
+   npm run build
+   npm run start:prod
+   ```
 
-### Chạy test
+5. **Chạy kiểm thử (Unit Tests)**:
+   ```bash
+   npm run test
+   ```
 
-```bash
-npm run test
-```
+---
 
-### Seed dữ liệu ban đầu
+## 8. Tài liệu API Swagger
 
-```bash
-npx prisma db push
-npx ts-node prisma/seed.ts
-```
+Khi ứng dụng chạy, tài liệu Swagger UI tương tác trực tiếp có sẵn tại:
+👉 **`http://localhost:3000/swagger`**
 
-## 9. Tình trạng hiện tại và Hướng phát triển
+---
 
-Dự án đã có một nền tảng backend vững chắc với các tính năng:
+## 9. Tài khoản Mặc định (Seed Account)
 
-- Hệ thống xác thực JWT với Refresh Token Rotation.
-- Hệ thống phân quyền động (RBAC) linh hoạt và mạnh mẽ.
-- Mô hình dữ liệu OKR chi tiết, được tối ưu hóa hiệu suất.
-- Cơ chế seed dữ liệu tự động để khởi tạo môi trường.
-
-Những phần cần phát triển tiếp trong tương lai gồm:
-
-- Xây dựng các `Guard` (RolesGuard, PermissionsGuard) để bảo vệ các API dựa trên hệ thống RBAC.
-
-## 10. Kết luận
-
-Backend này là nền tảng để xây dựng hệ thống quản lý OKR cho doanh nghiệp. Nó đã định nghĩa rõ mô hình dữ liệu, luồng đăng nhập ban đầu và cách tổ chức dữ liệu theo các thực thể chính: người dùng, phòng ban, chu kỳ, mục tiêu, KR và check-in.
-
-Mục tiêu cuối cùng là xây dựng một hệ thống cho phép:
-
-- quản lý tài khoản và phân quyền
-- theo dõi mục tiêu cá nhân / phòng ban / công ty
-- đo lường tiến độ bằng Key Result
-- cập nhật tiến độ thường xuyên
-- báo cáo và phê duyệt OKR rõ ràng
+- **Email**: `admin@example.com`
+- **Mật khẩu**: `Admin@123456`
+- **Vai trò**: `SUPER_ADMIN` (Toàn quyền trên toàn bộ các modules)
