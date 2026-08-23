@@ -19,6 +19,25 @@ function createPrismaClientInstance(): PrismaClient {
   if (!connectionUrl) {
     throw new Error('❌ CRITICAL: DATABASE_URL is not set in environment variables.');
   }
+
+  // Tự động cấu hình SSL Pool cho TiDB Cloud hoặc các kết nối SSL đặc thù
+  if (connectionUrl.includes('tidbcloud.com') || connectionUrl.includes(':4000')) {
+    const parsed = new URL(connectionUrl);
+    const adapter = new PrismaMariaDb({
+      host: parsed.hostname,
+      port: Number(parsed.port) || 4000,
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+      database: parsed.pathname.replace(/^\//, ''),
+      ssl: {
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: false,
+      },
+      connectTimeout: 30000,
+    });
+    return new PrismaClient({ adapter });
+  }
+
   const adapter = new PrismaMariaDb(connectionUrl);
   return new PrismaClient({ adapter });
 }
@@ -53,10 +72,6 @@ async function main() {
       where: { email: 'admin@example.com' },
     });
 
-    if (!adminUser) {
-      throw new Error('❌ Không tìm thấy admin@example.com. Vui lòng chạy `npm run seed` trước!');
-    }
-
     if (!cycleQ3) {
       cycleQ3 = await prisma.cycle.create({
         data: {
@@ -66,7 +81,7 @@ async function main() {
           startDate: new Date('2026-07-01'),
           endDate: new Date('2026-09-30'),
           status: Status.ACTIVE,
-          createdBy: adminUser.id,
+          createdBy: adminUser?.id ?? BigInt(1),
         },
       });
       console.log(`   ✅ Đã tạo chu kỳ: ${cycleQ3.title}`);

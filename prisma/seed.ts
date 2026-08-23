@@ -9,19 +9,17 @@ dotenv.config();
 /**
  * 1. Khai báo Interface Cấu hình Seed để tuân thủ Dependency Inversion (D trong SOLID)
  */
-// prettier-ignore
 interface AdminSeedConfig {
   email: string;
   plainPassword: string;
   fullName: string;
-  roleCode: string; // Changed from 'role: Role' to 'roleCode: string'
+  roleCode: string;
   saltRounds: number;
 }
 
 /**
  * Cấu hình Admin từ Environment Variables (Sử dụng Fallback an toàn)
  */
-// prettier-ignore
 const DEFAULT_ADMIN_CONFIG: AdminSeedConfig = {
   email: process.env.SEED_ADMIN_EMAIL || 'admin@example.com',
   plainPassword: process.env.SEED_ADMIN_PASSWORD || 'Admin@123456',
@@ -30,7 +28,6 @@ const DEFAULT_ADMIN_CONFIG: AdminSeedConfig = {
   saltRounds: 10,
 };
 
-// prettier-ignore
 const PERMISSIONS: Prisma.PermissionCreateInput[] = [
   { code: 'user:create', action: 'create', subject: 'User', module: 'users', description: 'Tạo mới tài khoản người dùng' },
   { code: 'user:read', action: 'read', subject: 'User', module: 'users', description: 'Xem danh sách và thông tin chi tiết người dùng' },
@@ -68,7 +65,6 @@ const PERMISSIONS: Prisma.PermissionCreateInput[] = [
   { code: 'report:read', action: 'read', subject: 'Report', module: 'reports', description: 'Xem báo cáo tiến độ, Dashboard thống kê OKRs' },
 ];
 
-// prettier-ignore
 const ROLES: Prisma.RoleCreateInput[] = [
   { code: 'SUPER_ADMIN', name: 'Quản trị viên cấp cao', description: 'Có toàn quyền truy cập và quản lý hệ thống.', isSystem: true },
   { code: 'OKR_CHAMPION', name: 'OKR Champion', description: 'Chịu trách nhiệm triển khai, đào tạo và duy trì quy trình OKR trong tổ chức.', isSystem: false },
@@ -78,20 +74,33 @@ const ROLES: Prisma.RoleCreateInput[] = [
 ];
 
 /**
- * 2. Factory khởi tạo Prisma Adapter cho MariaDB/MySQL
+ * 2. Factory khởi tạo Prisma Adapter cho MariaDB/MySQL / TiDB Cloud
  */
 function createPrismaClientInstance(): PrismaClient {
   const connectionUrl = process.env.DATABASE_URL;
 
   if (!connectionUrl) {
-    throw new Error(
-      '❌ CRITICAL: DATABASE_URL is not set in environment variables.',
-    );
+    throw new Error('❌ CRITICAL: DATABASE_URL is not set in environment variables.');
   }
 
-  // Prisma MariaDB adapter accepts a connection string.
-  const adapter = new PrismaMariaDb(connectionUrl);
+  if (connectionUrl.includes('tidbcloud.com') || connectionUrl.includes(':4000')) {
+    const parsed = new URL(connectionUrl);
+    const adapter = new PrismaMariaDb({
+      host: parsed.hostname,
+      port: Number(parsed.port) || 4000,
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+      database: parsed.pathname.replace(/^\//, ''),
+      ssl: {
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: false,
+      },
+      connectTimeout: 30000,
+    });
+    return new PrismaClient({ adapter });
+  }
 
+  const adapter = new PrismaMariaDb(connectionUrl);
   return new PrismaClient({ adapter });
 }
 
@@ -136,9 +145,7 @@ async function seedDefaultAdmin(
   });
 
   if (!superAdminRole) {
-    console.error(
-      '❌ CRITICAL: SUPER_ADMIN role not found after seeding. Aborting.',
-    );
+    console.error('❌ CRITICAL: SUPER_ADMIN role not found after seeding. Aborting.');
     throw new Error('SUPER_ADMIN role is missing.');
   }
   console.log(`🔍 Found essential role: ${superAdminRole.name}`);
@@ -150,23 +157,20 @@ async function seedDefaultAdmin(
   }));
   await prisma.rolePermission.createMany({
     data: relations,
-    skipDuplicates: true, // Bỏ qua nếu cặp role-permission đã tồn tại
+    skipDuplicates: true,
   });
-  console.log(
-    `🔗 Granted all ${allPermissions.length} permissions to SUPER_ADMIN.`,
-  );
+  console.log(`🔗 Granted all ${allPermissions.length} permissions to SUPER_ADMIN.`);
 
   // Step 5: Upsert the Admin User.
   const adminUser = await prisma.user.upsert({
     where: { email: config.email },
     update: {
-      password: hashedPassword, // Luôn cập nhật lại mật khẩu khi chạy seed để đảm bảo an toàn
+      password: hashedPassword,
     },
     create: {
       email: config.email,
       password: hashedPassword,
       fullName: config.fullName,
-      // The 'role' field is no longer on the User model
     },
   });
   console.log(`✅ Admin user "${adminUser.email}" is ready.`);
@@ -179,16 +183,14 @@ async function seedDefaultAdmin(
         roleId: superAdminRole.id,
       },
     },
-    update: {}, // Nothing to update if the link already exists
+    update: {},
     create: {
       userId: adminUser.id,
       roleId: superAdminRole.id,
     },
   });
 
-  console.log(
-    `🔗 Successfully assigned role "${superAdminRole.code}" to user "${adminUser.email}".`,
-  );
+  console.log(`🔗 Successfully assigned role "${superAdminRole.code}" to user "${adminUser.email}".`);
 }
 
 /**

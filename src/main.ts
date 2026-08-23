@@ -13,7 +13,10 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TransformBigIntInterceptor());
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+    origin:
+      process.env.FRONTEND_URL ??
+      'http://localhost:5173' ??
+      'https://okr-fe-delta.vercel.app',
     credentials: true,
   });
 
