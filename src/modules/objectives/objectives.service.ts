@@ -170,6 +170,34 @@ export class ObjectivesService {
             weight: true,
           },
         },
+        alignmentsFrom: {
+          include: {
+            alignedTo: {
+              select: {
+                id: true,
+                title: true,
+                level: true,
+                status: true,
+                progressPercentage: true,
+                owner: { select: { id: true, fullName: true } },
+              },
+            },
+          },
+        },
+        alignmentsTo: {
+          include: {
+            alignedFrom: {
+              select: {
+                id: true,
+                title: true,
+                level: true,
+                status: true,
+                progressPercentage: true,
+                owner: { select: { id: true, fullName: true } },
+              },
+            },
+          },
+        },
         _count: {
           select: {
             keyResults: true,
