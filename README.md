@@ -50,6 +50,7 @@ Hệ thống xây dựng trên **NestJS 10**, **Prisma ORM (v7)**, **MySQL / Mar
 ### 2.1 Cấu hình HTTP Client (Axios / Fetch)
 
 Khi gửi request lên Backend, Frontend cần chú ý 2 cấu hình bắt buộc:
+
 1. **`withCredentials: true`**: Cho phép trình duyệt gửi và nhận Cookie `HttpOnly` (`refreshToken`).
 2. **`Authorization: Bearer <accessToken>`**: Gắn token truy cập vào header của các request yêu cầu xác thực.
 
@@ -79,13 +80,17 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry && originalRequest.url !== '/auth/login') {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      originalRequest.url !== '/auth/login'
+    ) {
       originalRequest._retry = true;
       try {
         const res = await axios.post(
           'http://localhost:3000/auth/refresh',
           {},
-          { withCredentials: true }
+          { withCredentials: true },
         );
         const newAccessToken = res.data.accessToken;
         localStorage.setItem('accessToken', newAccessToken);
@@ -98,7 +103,7 @@ apiClient.interceptors.response.use(
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 ```
 
@@ -123,7 +128,10 @@ Sau khi đăng nhập, lưu mảng `permissions` từ `GET /auth/profile` vào G
 
 ```typescript
 // src/utils/permissions.ts
-export function hasPermission(userPermissions: string[], requiredPermission: string): boolean {
+export function hasPermission(
+  userPermissions: string[],
+  requiredPermission: string,
+): boolean {
   // SUPER_ADMIN hoặc người có quyền tương ứng
   return userPermissions.includes(requiredPermission);
 }
@@ -138,6 +146,7 @@ export function hasPermission(userPermissions: string[], requiredPermission: str
 ### 2.4 Quy chuẩn Dữ liệu BigInt & ID
 
 Toàn bộ ID trong Database sử dụng kiểu `BigInt` (64-bit) nhưng đã được Backend tự động chuyển đổi thành **`String`** (`"1"`, `"2"`, `"105"`) khi gửi sang JSON.
+
 - **Frontend nhận ID**: Dạng `string` (ví dụ: `objective.id = "3"`).
 - **Frontend gửi ID lên Params/Body**: Có thể truyền dưới dạng `string` hoặc `number` (Backend tự động parse sang `BigInt`).
 
@@ -145,15 +154,15 @@ Toàn bộ ID trong Database sử dụng kiểu `BigInt` (64-bit) nhưng đã đ
 
 ## 3. Bảng Tra Cứu Enums & Kiểu Dữ Liệu Toàn Hệ Thống
 
-| Tên Enum / Field | Các Giá Trị Hợp Lệ | Mô Tả & Ý Nghĩa |
-| :--- | :--- | :--- |
-| **`RoleCode`** | `SUPER_ADMIN`, `OKR_CHAMPION`, `MANAGER`, `EMPLOYEE`, `VIEWER` | Mã vai trò người dùng trong hệ thống. |
-| **`ObjectiveLevel`** | `COMPANY`, `DEPARTMENT`, `INDIVIDUAL` | Cấp độ Mục tiêu: Công ty / Phòng ban / Cá nhân. |
-| **`Status`** | `DRAFT`, `PENDING`, `APPROVED`, `REJECTED`, `ACTIVE`, `CLOSED` | Trạng thái chung (OKR, Check-in, Chu kỳ, Phòng ban). |
-| **`UnitType`** | `PERCENTAGE`, `CURRENCY`, `NUMERIC`, `BOOLEAN` | Đơn vị tính của Kết quả then chốt (Key Result). |
-| **`ConfidenceScore`**| `HIGH`, `MEDIUM`, `LOW` | Điểm tự tin hoàn thành mục tiêu (Xanh / Vàng / Đỏ). |
-| **`AlignmentType`** | `VERTICAL`, `CROSS` | Gióng hàng Dọc (cấp trên) hoặc Chéo (liên phòng ban). |
-| **`CycleType`** | `QUARTERLY`, `ANNUAL` | Loại chu kỳ: Quý (3 tháng) hoặc Năm (12 tháng). |
+| Tên Enum / Field      | Các Giá Trị Hợp Lệ                                             | Mô Tả & Ý Nghĩa                                       |
+| :-------------------- | :------------------------------------------------------------- | :---------------------------------------------------- |
+| **`RoleCode`**        | `SUPER_ADMIN`, `OKR_CHAMPION`, `MANAGER`, `EMPLOYEE`, `VIEWER` | Mã vai trò người dùng trong hệ thống.                 |
+| **`ObjectiveLevel`**  | `COMPANY`, `DEPARTMENT`, `INDIVIDUAL`                          | Cấp độ Mục tiêu: Công ty / Phòng ban / Cá nhân.       |
+| **`Status`**          | `DRAFT`, `PENDING`, `APPROVED`, `REJECTED`, `ACTIVE`, `CLOSED` | Trạng thái chung (OKR, Check-in, Chu kỳ, Phòng ban).  |
+| **`UnitType`**        | `PERCENTAGE`, `CURRENCY`, `NUMERIC`, `BOOLEAN`                 | Đơn vị tính của Kết quả then chốt (Key Result).       |
+| **`ConfidenceScore`** | `HIGH`, `MEDIUM`, `LOW`                                        | Điểm tự tin hoàn thành mục tiêu (Xanh / Vàng / Đỏ).   |
+| **`AlignmentType`**   | `VERTICAL`, `CROSS`                                            | Gióng hàng Dọc (cấp trên) hoặc Chéo (liên phòng ban). |
+| **`CycleType`**       | `QUARTERLY`, `ANNUAL`                                          | Loại chu kỳ: Quý (3 tháng) hoặc Năm (12 tháng).       |
 
 ---
 
@@ -176,6 +185,7 @@ flowchart LR
 ### Màn hình 1: Đăng nhập & Quản lý Phiên (Auth)
 
 #### 1. Đăng nhập
+
 - **Endpoint**: `POST /auth/login`
 - **Body**:
   ```json
@@ -202,15 +212,18 @@ flowchart LR
   ```
 
 #### 2. Lấy thông tin tài khoản hiện tại (Profile & Permissions)
+
 - **Endpoint**: `GET /auth/profile`
 - **Headers**: `Authorization: Bearer <accessToken>`
 - **Response `200 OK`**: Trả về thông tin đầy đủ kèm danh sách vai trò và 34 quyền hạn chi tiết.
 
 #### 3. Làm mới Access Token
+
 - **Endpoint**: `POST /auth/refresh`
 - **Response `200 OK`**: `{ "accessToken": "new_access_token_string" }`
 
 #### 4. Đăng xuất
+
 - **Endpoint**: `POST /auth/logout`
 - **Response `200 OK`**: `{ "message": "Logged out successfully" }`
 
@@ -218,38 +231,94 @@ flowchart LR
 
 ### Màn hình 2: Bảng Ma Trận Phân Quyền Động (Dynamic Permission Matrix)
 
-Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Roles làm cột, Modules & Permissions làm dòng) và tick/bỏ tick để phân quyền theo thời gian thực.
+Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Roles làm cột, Modules & Permissions làm dòng) và tick/bỏ tick để phân quyền theo thời gian thực, đồng thời xem/gán danh sách người dùng cho từng vai trò.
 
-#### 1. Lấy dữ liệu toàn bộ Ma trận phân quyền (1 Request duy nhất để vẽ Bảng)
+#### 1. Lấy dữ liệu toàn bộ Ma trận phân quyền kèm Nhân sự (Roles x Permissions x Users)
+
 - **Endpoint**: `GET /permissions/matrix`
 - **Response `200 OK`**:
   ```json
   {
     "roles": [
-      { "id": "1", "code": "SUPER_ADMIN", "name": "Quản trị viên cấp cao", "isSystem": true },
-      { "id": "2", "code": "OKR_CHAMPION", "name": "OKR Champion", "isSystem": false },
-      { "id": "3", "code": "MANAGER", "name": "Quản lý", "isSystem": false },
-      { "id": "4", "code": "EMPLOYEE", "name": "Nhân viên", "isSystem": false },
-      { "id": "5", "code": "VIEWER", "name": "Người xem", "isSystem": false }
+      {
+        "id": "1",
+        "code": "SUPER_ADMIN",
+        "name": "Quản trị viên cấp cao",
+        "isSystem": true,
+        "userCount": 1,
+        "users": [
+          {
+            "id": "1",
+            "email": "ceo@example.com",
+            "fullName": "Trần Văn Long",
+            "jobTitle": "Chief Executive Officer (CEO)",
+            "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+            "department": { "id": "1", "name": "Ban Giám đốc" }
+          }
+        ]
+      },
+      {
+        "id": "3",
+        "code": "MANAGER",
+        "name": "Quản lý",
+        "isSystem": false,
+        "userCount": 4,
+        "users": [
+          {
+            "id": "2",
+            "fullName": "Nguyễn Minh Tuấn",
+            "email": "cto@example.com",
+            "jobTitle": "CTO"
+          },
+          {
+            "id": "3",
+            "fullName": "Lê Hoàng Nam",
+            "email": "lead.dev@example.com",
+            "jobTitle": "Lead Dev"
+          }
+        ]
+      }
     ],
     "modules": [
       {
         "module": "objectives",
         "moduleName": "Quản lý Mục tiêu (Objectives)",
         "permissions": [
-          { "id": "17", "code": "objective:create", "action": "create", "subject": "Objective", "description": "Tạo mới Mục tiêu" },
-          { "id": "18", "code": "objective:read", "action": "read", "subject": "Objective", "description": "Xem chi tiết Mục tiêu" },
-          { "id": "19", "code": "objective:update", "action": "update", "subject": "Objective", "description": "Chỉnh sửa Mục tiêu" },
-          { "id": "20", "code": "objective:delete", "action": "delete", "subject": "Objective", "description": "Xóa Mục tiêu" },
-          { "id": "21", "code": "objective:approve", "action": "approve", "subject": "Objective", "description": "Phê duyệt OKR" }
-        ]
-      },
-      {
-        "module": "checkins",
-        "moduleName": "Quản lý Check-in & Tiến độ",
-        "permissions": [
-          { "id": "29", "code": "checkin:create", "action": "create", "subject": "CheckIn", "description": "Tạo bản Check-in" },
-          { "id": "33", "code": "checkin:review", "action": "approve", "subject": "CheckIn", "description": "Duyệt Check-in" }
+          {
+            "id": "17",
+            "code": "objective:create",
+            "action": "create",
+            "subject": "Objective",
+            "description": "Tạo mới Mục tiêu"
+          },
+          {
+            "id": "18",
+            "code": "objective:read",
+            "action": "read",
+            "subject": "Objective",
+            "description": "Xem chi tiết Mục tiêu"
+          },
+          {
+            "id": "19",
+            "code": "objective:update",
+            "action": "update",
+            "subject": "Objective",
+            "description": "Chỉnh sửa Mục tiêu"
+          },
+          {
+            "id": "20",
+            "code": "objective:delete",
+            "action": "delete",
+            "subject": "Objective",
+            "description": "Xóa Mục tiêu"
+          },
+          {
+            "id": "21",
+            "code": "objective:approve",
+            "action": "approve",
+            "subject": "Objective",
+            "description": "Phê duyệt OKR"
+          }
         ]
       }
     ],
@@ -257,22 +326,81 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
       "1": {
         "roleId": "1",
         "roleCode": "SUPER_ADMIN",
-        "permissionCodes": ["user:create", "objective:create", "objective:approve", "checkin:review", "..."]
+        "permissionCodes": [
+          "user:create",
+          "objective:create",
+          "objective:approve",
+          "checkin:review",
+          "..."
+        ]
       },
       "3": {
         "roleId": "3",
         "roleCode": "MANAGER",
-        "permissionCodes": ["objective:read", "objective:approve", "checkin:review"]
+        "permissionCodes": [
+          "objective:read",
+          "objective:approve",
+          "checkin:review"
+        ]
       }
     }
   }
   ```
 - **💡 Cách render trên FE**:
-  - Render cột: Lặp qua mảng `roles`.
+  - Render cột: Lặp qua mảng `roles` (Hiển thị tên vai trò kèm Avatar group hoặc số lượng nhân sự `userCount`).
   - Render dòng: Lặp qua từng nhóm `modules` $\rightarrow$ lặp qua từng `permission`.
   - Checkbox state: `matrix[roleId].permissionCodes.includes(permission.code)`.
 
-#### 2. Lưu cập nhật Phân quyền cho một Vai trò từ Bảng Ma trận
+#### 2. Lấy Bảng Ma trận Phân quyền theo Từng Người dùng (Users x Roles & Effective Permissions)
+
+- **Endpoint**: `GET /permissions/users-matrix`
+- **Response `200 OK`**:
+  ```json
+  {
+    "totalUsers": 12,
+    "roles": [
+      { "id": "1", "code": "SUPER_ADMIN", "name": "Quản trị viên cấp cao" },
+      { "id": "3", "code": "MANAGER", "name": "Quản lý" },
+      { "id": "4", "code": "EMPLOYEE", "name": "Nhân viên" }
+    ],
+    "users": [
+      {
+        "id": "2",
+        "fullName": "Nguyễn Minh Tuấn",
+        "email": "cto@example.com",
+        "jobTitle": "Chief Technology Officer (CTO)",
+        "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
+        "department": { "id": "2", "name": "Khối Công nghệ & Sản phẩm" },
+        "roles": [
+          { "id": "3", "code": "MANAGER", "name": "Quản lý" },
+          { "id": "2", "code": "OKR_CHAMPION", "name": "OKR Champion" }
+        ],
+        "roleCodes": ["MANAGER", "OKR_CHAMPION"],
+        "isSuperAdmin": false,
+        "totalEffectivePermissions": 22,
+        "effectivePermissions": [
+          "objective:read",
+          "objective:create",
+          "objective:approve",
+          "checkin:review",
+          "department:read",
+          "cycle:read"
+        ]
+      }
+    ]
+  }
+  ```
+- **💡 Ứng dụng trên FE**: Dùng cho Tab xem theo Người dùng (Người dùng ở dòng, các Vai trò ở cột để bật/tắt vai trò cho từng nhân sự).
+
+#### 3. Quản lý Nhân sự được gán vào Vai trò (Trực tiếp từ Cột Vai trò)
+
+- **Xem danh sách nhân sự của vai trò**: `GET /roles/:id/users`
+- **Gán thêm nhiều nhân sự vào vai trò**: `POST /roles/:id/users`
+  - Body: `{ "userIds": ["3", "4", "5"] }`
+- **Thu hồi vai trò khỏi một nhân sự**: `DELETE /roles/:id/users/:userId`
+
+#### 4. Lưu cập nhật Phân quyền cho một Vai trò từ Bảng Ma trận
+
 - **Endpoint**: `PUT /roles/:id/permissions`
 - **Body**:
   ```json
@@ -289,8 +417,9 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
   ```
 - **Response `200 OK`**: `{ "message": "Permissions updated successfully", "totalPermissions": 6 }`
 
-#### 3. Quản lý Danh sách Vai trò (Roles CRUD)
-- `GET /roles`: Lấy danh sách tất cả các vai trò.
+#### 5. Quản lý Danh sách Vai trò (Roles CRUD)
+
+- `GET /roles`: Lấy danh sách tất cả các vai trò kèm số lượng user và permission.
 - `POST /roles`: Tạo vai trò tùy chỉnh mới (`{ "name": "Team Lead", "code": "TEAM_LEAD", "description": "Trưởng nhóm" }`).
 - `PUT /roles/:id`: Cập nhật thông tin vai trò.
 - `DELETE /roles/:id`: Xóa vai trò (Hệ thống tự động chặn không cho xóa vai trò `isSystem: true`).
@@ -300,10 +429,12 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
 ### Màn hình 3: Quản lý Tài khoản & Gán Vai trò (Users & Roles Assignment)
 
 #### 1. Lấy danh sách nhân sự
+
 - **Endpoint**: `GET /users`
 - **Response `200 OK`**: Danh sách users kèm phòng ban (`department`), quản lý trực tiếp (`manager`) và danh sách vai trò (`roles`).
 
 #### 2. Tạo tài khoản nhân sự mới
+
 - **Endpoint**: `POST /users`
 - **Body**:
   ```json
@@ -320,10 +451,12 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
   ```
 
 #### 3. Cập nhật thông tin cá nhân
+
 - **Endpoint**: `PUT /users/:id`
 - **Body**: `{ "fullName": "...", "jobTitle": "...", "avatarUrl": "...", "departmentId": "3" }`
 
 #### 4. Gán vai trò cho người dùng (Dynamic Role Assignment Modal)
+
 - **Endpoint**: `PUT /users/:id/roles`
 - **Body**:
   ```json
@@ -337,6 +470,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
 ### Màn hình 4: Sơ đồ Cây Cơ cấu Tổ chức (Organization Tree / Departments)
 
 #### 1. Lấy cấu trúc cây phân cấp phòng ban (Organization Tree)
+
 - **Endpoint**: `GET /departments/tree`
 - **Response `200 OK`**:
   ```json
@@ -358,14 +492,22 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
           "id": "2",
           "name": "Khối Công nghệ & Sản phẩm",
           "parentId": "1",
-          "manager": { "id": "2", "fullName": "Nguyễn Minh Tuấn", "jobTitle": "CTO" },
+          "manager": {
+            "id": "2",
+            "fullName": "Nguyễn Minh Tuấn",
+            "jobTitle": "CTO"
+          },
           "memberCount": 1,
           "children": [
             {
               "id": "3",
               "name": "Phòng Kỹ thuật Phần mềm",
               "parentId": "2",
-              "manager": { "id": "3", "fullName": "Lê Hoàng Nam", "jobTitle": "Lead Dev" },
+              "manager": {
+                "id": "3",
+                "fullName": "Lê Hoàng Nam",
+                "jobTitle": "Lead Dev"
+              },
               "memberCount": 3,
               "children": []
             }
@@ -377,6 +519,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
   ```
 
 #### 2. Thao tác Phòng ban (CRUD)
+
 - `POST /departments`: Tạo phòng ban mới (`{ "name": "Phòng Mobile App", "parentId": "2", "managerId": "3" }`).
 - `PUT /departments/:id`: Sửa phòng ban (chuyển phòng ban cha hoặc đổi Manager).
 - `DELETE /departments/:id`: Xóa mềm phòng ban (Chặn nếu đang có phòng ban con).
@@ -386,14 +529,17 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
 ### Màn hình 5: Quản lý Chu kỳ OKRs (Cycles Management)
 
 #### 1. Lấy danh sách chu kỳ
+
 - **Endpoint**: `GET /cycles`
 - **Response `200 OK`**: Danh sách chu kỳ sắp xếp theo ngày mới nhất.
 
 #### 2. Lấy chu kỳ hiện tại (Active Cycle)
+
 - **Endpoint**: `GET /cycles/current`
 - **Response `200 OK`**: Trả về chu kỳ đang `ACTIVE` khớp với ngày hiện tại (dùng để gán mặc định vào Filter trên Topbar).
 
 #### 3. Tạo chu kỳ mới
+
 - **Endpoint**: `POST /cycles`
 - **Body**:
   ```json
@@ -407,6 +553,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
   ```
 
 #### 4. Khóa chu kỳ OKRs (`CLOSED` - Đóng băng dữ liệu)
+
 - **Endpoint**: `PATCH /cycles/:id/status`
 - **Body**: `{ "status": "CLOSED" }`
 - **💡 Lưu ý cho FE**: Khi `cycle.status === 'CLOSED'`, FE nên disable các nút: Thêm/Sửa/Xóa Objective, Key Result và Check-in.
@@ -416,6 +563,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
 ### Màn hình 6: Bảng Dashboard Mục tiêu OKRs & Phê duyệt (Objectives Dashboard)
 
 #### 1. Lọc và lấy danh sách Mục tiêu OKRs
+
 - **Endpoint**: `GET /objectives`
 - **Query Parameters**:
   - `cycleId`: ID chu kỳ (bắt buộc chọn theo chu kỳ hiện tại).
@@ -456,6 +604,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
   ```
 
 #### 2. Tạo Mục tiêu OKR mới (kèm Key Results ban đầu)
+
 - **Endpoint**: `POST /objectives`
 - **Body**:
   ```json
@@ -482,6 +631,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
   ```
 
 #### 3. Phê duyệt / Từ chối Mục tiêu OKR (Dành cho Quản lý)
+
 - **Endpoint**: `PATCH /objectives/:id/status`
 - **Body**:
   ```json
@@ -495,6 +645,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
 ### Màn hình 7: Bản đồ Gióng hàng Chiến lược (Vertical & Cross Alignments)
 
 #### 1. Tạo liên kết gióng hàng giữa 2 OKRs
+
 - **Endpoint**: `POST /objectives/:id/alignments`
 - **Body**:
   ```json
@@ -505,6 +656,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
   ```
 
 #### 2. Hủy liên kết gióng hàng
+
 - **Endpoint**: `DELETE /objectives/:id/alignments/:targetObjId`
 
 ---
@@ -512,6 +664,7 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
 ### Màn hình 8: Kết quả Then chốt & Công thức Tiến độ có Trọng số (Key Results)
 
 #### 1. Thêm Key Result vào Mục tiêu
+
 - **Endpoint**: `POST /objectives/:id/key-results`
 - **Body**:
   ```json
@@ -527,13 +680,16 @@ Màn hình cho phép Quản trị viên xem ma trận dạng bảng lưới (Rol
   ```
 
 #### 2. Cập nhật Key Result (Tự động kích hoạt tính lại % tiến độ của Objective)
+
 - **Endpoint**: `PUT /key-results/:id`
 - **Body**: `{ "title": "...", "targetValue": 150, "weight": 2.5 }`
 
 #### 3. Xóa Key Result
+
 - **Endpoint**: `DELETE /key-results/:id`
 
 #### 📊 Công thức tính tiến độ hiển thị trên Progress Bar:
+
 $$\text{Progress}_{\text{KR}} = \min\left(100, \max\left(0, \frac{\text{Current} - \text{Start}}{\text{Target} - \text{Start}} \times 100\right)\right)$$
 
 $$\text{Progress}_{\text{Objective}} = \frac{\sum_{i=1}^{n} (\text{Progress}_{\text{KR}_i} \times \text{Weight}_i)}{\sum_{i=1}^{n} \text{Weight}_i}$$
@@ -543,6 +699,7 @@ $$\text{Progress}_{\text{Objective}} = \frac{\sum_{i=1}^{n} (\text{Progress}_{\t
 ### Màn hình 9: Thực hiện Check-in & Lịch sử Biến động (Audit Log Timeline)
 
 #### 1. Gửi bản Check-in tiến độ mới (Modal Check-in)
+
 - **Endpoint**: `POST /key-results/:krId/check-ins`
 - **Body**:
   ```json
@@ -556,6 +713,7 @@ $$\text{Progress}_{\text{Objective}} = \frac{\sum_{i=1}^{n} (\text{Progress}_{\t
 - **Response `201 Created`**: Bản ghi check-in với trạng thái `PENDING` (chờ Quản lý duyệt) hoặc `APPROVED` (nếu là tự duyệt).
 
 #### 2. Lấy lịch sử Check-in của Key Result (Audit Log Timeline)
+
 - **Endpoint**: `GET /key-results/:krId/check-ins`
 - **Response `200 OK`**:
   ```json
@@ -593,10 +751,12 @@ $$\text{Progress}_{\text{Objective}} = \frac{\sum_{i=1}^{n} (\text{Progress}_{\t
 Dành cho Quản lý / Trưởng phòng để xem toàn bộ các yêu cầu Check-in từ cấp dưới gửi lên.
 
 #### 1. Lấy danh sách Check-in chờ Quản lý duyệt
+
 - **Endpoint**: `GET /check-ins/pending-reviews`
 - **Response `200 OK`**: Danh sách tất cả các check-in có `status: PENDING` mà người đang đăng nhập được chỉ định làm `reviewer` hoặc là Manager của người tạo.
 
 #### 2. Phê duyệt hoặc Từ chối Check-in
+
 - **Endpoint**: `PATCH /check-ins/:id/review`
 - **Body**:
   ```json
@@ -613,17 +773,17 @@ Dành cho Quản lý / Trưởng phòng để xem toàn bộ các yêu cầu Che
 
 > **Mật khẩu chung cho tất cả các tài khoản test:** `Password@123`
 
-| Vai trò / Chức danh | Họ và tên | Email đăng nhập | Quyền hạn & Kịch bản Test trên UI |
-| :--- | :--- | :--- | :--- |
-| 👑 **CEO / Super Admin** | Trần Văn Long | `ceo@example.com` | Quản trị toàn hệ thống, sở hữu OKR cấp Công ty, toàn quyền trên Ma trận phân quyền. |
-| 💻 **CTO (Manager & Champion)** | Nguyễn Minh Tuấn | `cto@example.com` | Quản lý Khối Công nghệ; có Check-in của QA Lead chờ duyệt (`GET /check-ins/pending-reviews`). |
-| 🛠️ **Lead Dev (Manager)** | Lê Hoàng Nam | `lead.dev@example.com` | Quản lý phòng Kỹ thuật; có **2 Check-in PENDING** (Bảo & Mai) và **1 OKR PENDING** chờ duyệt. |
-| ⚡ **Senior Backend (Employee)** | Phạm Quốc Bảo | `dev.senior@example.com` | Sở hữu OKR cá nhân Backend, có lịch sử Check-in qua 3 tuần liên tiếp (Audit Log). |
-| 🎨 **Frontend Dev (Employee)** | Đặng Thị Mai | `dev.frontend@example.com` | Sở hữu OKR Design System đang ở trạng thái chờ duyệt (`PENDING`). |
-| 🧪 **QA Lead (Manager)** | Ngô Văn Hùng | `qa.lead@example.com` | Sở hữu OKR phòng QA, đã gửi Check-in test automation cho CTO duyệt. |
-| 💼 **Head of Sales (Manager)** | Vũ Đức Thắng | `sales.lead@example.com` | Quản lý phòng kinh doanh B2B; có Check-in của Marketing Lead chờ duyệt. |
-| 📈 **Sales Specialist (Employee)**| Hoàng Thu Trang | `sales.exec@example.com` | Sở hữu OKR cá nhân có Gióng hàng Chéo (Cross Alignment) và 1 Check-in bị REJECTED. |
-| 📢 **Digital Marketing Lead** | Lý Gia Huy | `mkt.lead@example.com` | Sở hữu OKR phòng Marketing, đã gửi Check-in MQLs cho Sales Lead duyệt. |
-| 🌟 **HR Manager & Champion** | Nguyễn Bích Ngọc | `hr.lead@example.com` | Quản lý phòng nhân sự, thúc đẩy văn hóa OKRs toàn công ty. |
-| 👥 **HR Specialist (Employee)** | Trần Phương Linh | `hr.specialist@example.com` | Phụ trách tổ chức các workshop đào tạo kỹ năng OKRs. |
-| 👁️ **Viewer / Auditor** | Bùi Anh Dũng | `viewer@example.com` | Quyền kiểm toán chỉ xem (ReadOnly), chặn quyền sửa/xóa trên giao diện. |
+| Vai trò / Chức danh                | Họ và tên        | Email đăng nhập             | Quyền hạn & Kịch bản Test trên UI                                                             |
+| :--------------------------------- | :--------------- | :-------------------------- | :-------------------------------------------------------------------------------------------- |
+| 👑 **CEO / Super Admin**           | Trần Văn Long    | `ceo@example.com`           | Quản trị toàn hệ thống, sở hữu OKR cấp Công ty, toàn quyền trên Ma trận phân quyền.           |
+| 💻 **CTO (Manager & Champion)**    | Nguyễn Minh Tuấn | `cto@example.com`           | Quản lý Khối Công nghệ; có Check-in của QA Lead chờ duyệt (`GET /check-ins/pending-reviews`). |
+| 🛠️ **Lead Dev (Manager)**          | Lê Hoàng Nam     | `lead.dev@example.com`      | Quản lý phòng Kỹ thuật; có **2 Check-in PENDING** (Bảo & Mai) và **1 OKR PENDING** chờ duyệt. |
+| ⚡ **Senior Backend (Employee)**   | Phạm Quốc Bảo    | `dev.senior@example.com`    | Sở hữu OKR cá nhân Backend, có lịch sử Check-in qua 3 tuần liên tiếp (Audit Log).             |
+| 🎨 **Frontend Dev (Employee)**     | Đặng Thị Mai     | `dev.frontend@example.com`  | Sở hữu OKR Design System đang ở trạng thái chờ duyệt (`PENDING`).                             |
+| 🧪 **QA Lead (Manager)**           | Ngô Văn Hùng     | `qa.lead@example.com`       | Sở hữu OKR phòng QA, đã gửi Check-in test automation cho CTO duyệt.                           |
+| 💼 **Head of Sales (Manager)**     | Vũ Đức Thắng     | `sales.lead@example.com`    | Quản lý phòng kinh doanh B2B; có Check-in của Marketing Lead chờ duyệt.                       |
+| 📈 **Sales Specialist (Employee)** | Hoàng Thu Trang  | `sales.exec@example.com`    | Sở hữu OKR cá nhân có Gióng hàng Chéo (Cross Alignment) và 1 Check-in bị REJECTED.            |
+| 📢 **Digital Marketing Lead**      | Lý Gia Huy       | `mkt.lead@example.com`      | Sở hữu OKR phòng Marketing, đã gửi Check-in MQLs cho Sales Lead duyệt.                        |
+| 🌟 **HR Manager & Champion**       | Nguyễn Bích Ngọc | `hr.lead@example.com`       | Quản lý phòng nhân sự, thúc đẩy văn hóa OKRs toàn công ty.                                    |
+| 👥 **HR Specialist (Employee)**    | Trần Phương Linh | `hr.specialist@example.com` | Phụ trách tổ chức các workshop đào tạo kỹ năng OKRs.                                          |
+| 👁️ **Viewer / Auditor**            | Bùi Anh Dũng     | `viewer@example.com`        | Quyền kiểm toán chỉ xem (ReadOnly), chặn quyền sửa/xóa trên giao diện.                        |

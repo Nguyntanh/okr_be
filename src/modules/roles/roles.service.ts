@@ -248,4 +248,120 @@ export class RolesService {
 
     return this.getRolePermissions(roleId);
   }
+
+  /**
+   * Lấy danh sách tất cả nhân sự đang được gán vai trò này.
+   */
+  async getRoleUsers(id: string | bigint) {
+    const roleId = typeof id === 'bigint' ? id : BigInt(id);
+
+    const role = await this.prisma.role.findFirst({
+      where: { id: roleId, deletedAt: null },
+      include: {
+        users: {
+          where: {
+            user: { deletedAt: null },
+          },
+          include: {
+            user: {
+              include: {
+                department: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!role) {
+      throw new NotFoundException(`Không tìm thấy vai trò với ID ${id}`);
+    }
+
+    return {
+      roleId: role.id.toString(),
+      roleCode: role.code,
+      roleName: role.name,
+      totalUsers: role.users.length,
+      users: role.users.map((ur) => ({
+        id: ur.user.id.toString(),
+        email: ur.user.email,
+        fullName: ur.user.fullName,
+        jobTitle: ur.user.jobTitle,
+        avatarUrl: ur.user.avatarUrl,
+        department: ur.user.department
+          ? {
+              id: ur.user.department.id.toString(),
+              name: ur.user.department.name,
+            }
+          : null,
+      })),
+    };
+  }
+
+  /**
+   * Gán thêm nhiều người dùng vào vai trò trực tiếp từ Bảng phân quyền.
+   */
+  async assignUsersToRole(id: string | bigint, userIds: (string | bigint)[]) {
+    const roleId = typeof id === 'bigint' ? id : BigInt(id);
+
+    const role = await this.prisma.role.findFirst({
+      where: { id: roleId, deletedAt: null },
+    });
+
+    if (!role) {
+      throw new NotFoundException(`Không tìm thấy vai trò với ID ${id}`);
+    }
+
+    const parsedUserIds = userIds.map((uId) =>
+      typeof uId === 'bigint' ? uId : BigInt(uId),
+    );
+
+    await this.prisma.userRole.createMany({
+      data: parsedUserIds.map((userId) => ({
+        roleId,
+        userId,
+      })),
+      skipDuplicates: true,
+    });
+
+    return this.getRoleUsers(roleId);
+  }
+
+  /**
+   * Thu hồi vai trò khỏi một người dùng.
+   */
+  async removeUserFromRole(roleId: string | bigint, userId: string | bigint) {
+    const parsedRoleId = typeof roleId === 'bigint' ? roleId : BigInt(roleId);
+    const parsedUserId = typeof userId === 'bigint' ? userId : BigInt(userId);
+
+    const existingLink = await this.prisma.userRole.findUnique({
+      where: {
+        userId_roleId: {
+          userId: parsedUserId,
+          roleId: parsedRoleId,
+        },
+      },
+    });
+
+    if (!existingLink) {
+      throw new NotFoundException(
+        `Người dùng ID ${userId} không nắm giữ vai trò ID ${roleId}`,
+      );
+    }
+
+    await this.prisma.userRole.delete({
+      where: {
+        userId_roleId: {
+          userId: parsedUserId,
+          roleId: parsedRoleId,
+        },
+      },
+    });
+
+    return {
+      message: `Đã thu hồi vai trò khỏi người dùng thành công`,
+      roleId: parsedRoleId.toString(),
+      userId: parsedUserId.toString(),
+    };
+  }
 }

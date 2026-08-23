@@ -23,6 +23,11 @@ describe('RolesService', () => {
         deleteMany: jest.fn(),
         createMany: jest.fn(),
       },
+      userRole: {
+        findUnique: jest.fn(),
+        delete: jest.fn(),
+        createMany: jest.fn(),
+      },
       permission: {
         findMany: jest.fn(),
       },
@@ -82,29 +87,60 @@ describe('RolesService', () => {
     });
   });
 
-  describe('remove', () => {
-    it('nên ném BadRequestException nếu xóa vai trò hệ thống (isSystem: true)', async () => {
+  describe('getRoleUsers', () => {
+    it('nên trả về danh sách người dùng được gán vào vai trò', async () => {
       (prisma.role.findFirst as jest.Mock).mockResolvedValue({
         id: BigInt(1),
-        code: 'SUPER_ADMIN',
-        isSystem: true,
+        code: 'MANAGER',
+        name: 'Quản lý',
+        users: [
+          {
+            user: {
+              id: BigInt(10),
+              email: 'manager@example.com',
+              fullName: 'Manager User',
+              jobTitle: 'Lead',
+              avatarUrl: null,
+              department: { id: BigInt(1), name: 'Engineering' },
+            },
+          },
+        ],
       });
 
-      await expect(service.remove('1')).rejects.toThrow(BadRequestException);
+      const result = await service.getRoleUsers('1');
+      expect(result.roleCode).toBe('MANAGER');
+      expect(result.totalUsers).toBe(1);
+      expect(result.users[0].email).toBe('manager@example.com');
     });
+  });
 
-    it('nên cho phép soft-delete nếu là vai trò tùy chỉnh', async () => {
+  describe('assignUsersToRole', () => {
+    it('nên gán nhiều người dùng vào vai trò', async () => {
       (prisma.role.findFirst as jest.Mock).mockResolvedValue({
-        id: BigInt(2),
-        code: 'CUSTOM_ROLE',
-        name: 'Custom',
-        isSystem: false,
+        id: BigInt(1),
+        code: 'MANAGER',
+        name: 'Quản lý',
+        users: [],
       });
-      (prisma.role.update as jest.Mock).mockResolvedValue({});
+      (prisma.userRole.createMany as jest.Mock).mockResolvedValue({ count: 2 });
 
-      const result = await service.remove('2');
-      expect(result).toHaveProperty('message');
-      expect(prisma.role.update).toHaveBeenCalled();
+      const result = await service.assignUsersToRole('1', ['10', '11']);
+      expect(prisma.userRole.createMany).toHaveBeenCalled();
+      expect(result).toHaveProperty('roleCode');
+    });
+  });
+
+  describe('removeUserFromRole', () => {
+    it('nên thu hồi vai trò khỏi người dùng', async () => {
+      (prisma.userRole.findUnique as jest.Mock).mockResolvedValue({
+        userId: BigInt(10),
+        roleId: BigInt(1),
+      });
+      (prisma.userRole.delete as jest.Mock).mockResolvedValue({});
+
+      const result = await service.removeUserFromRole('1', '10');
+      expect(result.message).toContain('thu hồi vai trò');
+      expect(prisma.userRole.delete).toHaveBeenCalled();
     });
   });
 });

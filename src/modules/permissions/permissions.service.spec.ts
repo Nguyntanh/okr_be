@@ -7,6 +7,9 @@ describe('PermissionsService', () => {
 
   beforeEach(() => {
     prisma = {
+      user: {
+        findMany: jest.fn(),
+      },
       permission: {
         findMany: jest.fn(),
       },
@@ -60,9 +63,26 @@ describe('PermissionsService', () => {
   });
 
   describe('getPermissionMatrix', () => {
-    it('nên trả về đầy đủ Roles, Modules và Matrix mapping', async () => {
+    it('nên trả về đầy đủ Roles, Modules và Matrix mapping kèm users', async () => {
       (prisma.role.findMany as jest.Mock).mockResolvedValue([
-        { id: BigInt(1), code: 'SUPER_ADMIN', name: 'Admin', isSystem: true },
+        {
+          id: BigInt(1),
+          code: 'SUPER_ADMIN',
+          name: 'Admin',
+          isSystem: true,
+          users: [
+            {
+              user: {
+                id: BigInt(1),
+                email: 'admin@example.com',
+                fullName: 'Admin',
+                jobTitle: 'CEO',
+                avatarUrl: null,
+                department: null,
+              },
+            },
+          ],
+        },
       ]);
       (prisma.permission.findMany as jest.Mock).mockResolvedValue([
         { id: BigInt(10), code: 'objective:create', module: 'objectives' },
@@ -77,9 +97,48 @@ describe('PermissionsService', () => {
 
       const result = await service.getPermissionMatrix();
       expect(result).toHaveProperty('roles');
+      expect(result.roles[0].userCount).toBe(1);
+      expect(result.roles[0].users[0].email).toBe('admin@example.com');
       expect(result).toHaveProperty('modules');
       expect(result).toHaveProperty('matrix');
       expect(result.matrix['1'].permissionCodes).toContain('objective:create');
+    });
+  });
+
+  describe('getUsersPermissionMatrix', () => {
+    it('nên trả về ma trận người dùng x vai trò và effective permissions', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: BigInt(1),
+          email: 'admin@example.com',
+          fullName: 'Admin User',
+          jobTitle: 'CEO',
+          avatarUrl: null,
+          department: { id: BigInt(1), name: 'BOD' },
+          roles: [
+            {
+              role: {
+                id: BigInt(1),
+                code: 'SUPER_ADMIN',
+                name: 'Admin',
+                isSystem: true,
+                permissions: [],
+              },
+            },
+          ],
+        },
+      ]);
+      (prisma.role.findMany as jest.Mock).mockResolvedValue([
+        { id: BigInt(1), code: 'SUPER_ADMIN', name: 'Admin', isSystem: true },
+      ]);
+      (prisma.permission.findMany as jest.Mock).mockResolvedValue([
+        { id: BigInt(1), code: 'user:create', module: 'users' },
+      ]);
+
+      const result = await service.getUsersPermissionMatrix();
+      expect(result).toHaveProperty('users');
+      expect(result.users[0].isSuperAdmin).toBe(true);
+      expect(result.users[0].effectivePermissions).toContain('user:create');
     });
   });
 });

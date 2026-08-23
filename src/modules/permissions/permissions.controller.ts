@@ -37,11 +37,23 @@ export class PermissionsController {
   @RequirePermissions('role:read')
   @ApiOperation({
     summary:
-      'Lấy dữ liệu toàn bộ ma trận phân quyền (Roles x Modules x Permissions)',
+      'Lấy dữ liệu toàn bộ ma trận phân quyền (Roles x Modules x Permissions) kèm danh sách nhân sự',
     description:
-      'Trả về thông tin Roles, cấu trúc Modules/Permissions và trạng thái check của từng Role.',
+      'Trả về thông tin Roles, danh sách nhân sự trong từng Role, cấu trúc Modules/Permissions và trạng thái check của từng Role.',
   })
   async getMatrix() {
     return this.permissionsService.getPermissionMatrix();
+  }
+
+  @Get('users-matrix')
+  @RequirePermissions('role:read')
+  @ApiOperation({
+    summary:
+      'Lấy Bảng ma trận phân quyền theo Từng Người dùng (Users x Roles & Effective Permissions)',
+    description:
+      'Trả về danh sách toàn bộ nhân sự, các vai trò được gán và danh sách quyền hạn thực tế (effective permissions) mà nhân sự đó được hưởng.',
+  })
+  async getUsersMatrix() {
+    return this.permissionsService.getUsersPermissionMatrix();
   }
 }

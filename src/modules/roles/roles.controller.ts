@@ -13,6 +13,7 @@ import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateRolePermissionsDto } from './dto/update-role-permissions.dto';
+import { AssignRoleUsersDto } from './dto/assign-role-users.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -93,5 +94,40 @@ export class RolesController {
     @Body() dto: UpdateRolePermissionsDto,
   ) {
     return this.rolesService.updateRolePermissions(id, dto);
+  }
+
+  @Get(':id/users')
+  @RequirePermissions('role:read')
+  @ApiOperation({
+    summary: 'Lấy danh sách người dùng được gán vào vai trò này',
+    description:
+      'Phục vụ hiển thị danh sách avatar / thành viên trong cột Vai trò trên Bảng phân quyền.',
+  })
+  async getRoleUsers(@Param('id') id: string) {
+    return this.rolesService.getRoleUsers(id);
+  }
+
+  @Post(':id/users')
+  @RequirePermissions('role:update')
+  @ApiOperation({
+    summary: 'Gán thêm người dùng vào vai trò trực tiếp từ Bảng phân quyền',
+  })
+  async assignUsersToRole(
+    @Param('id') id: string,
+    @Body() dto: AssignRoleUsersDto,
+  ) {
+    return this.rolesService.assignUsersToRole(id, dto.userIds);
+  }
+
+  @Delete(':id/users/:userId')
+  @RequirePermissions('role:update')
+  @ApiOperation({
+    summary: 'Thu hồi vai trò khỏi một người dùng',
+  })
+  async removeUserFromRole(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+  ) {
+    return this.rolesService.removeUserFromRole(id, userId);
   }
 }
